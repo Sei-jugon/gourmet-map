@@ -147,6 +147,18 @@
     </div>
   </div>
 
+  <!-- 自分の記録を消す時の確認(「消す」は小さく・危険の色。「やめる」を大きく) -->
+  <div id="delete-modal" class="modal" hidden>
+    <div class="modal-box">
+      <h2>この記録を消しますか?</h2>
+      <p class="note delete-main">この記録と写真を消します。もとに戻せません。</p>
+      <p id="delete-shared-note" class="note delete-shared" hidden>家族に見せていた記録です。すでに家族のスマホに表示された写真は、取り戻せません。</p>
+      <p id="delete-error" class="login-error" role="alert"></p>
+      <button id="delete-cancel" class="btn main wide" type="button">やめる</button>
+      <button id="delete-ok" class="delete-confirm" type="button">消す</button>
+    </div>
+  </div>
+
   <section id="station-picker" class="sheet tall" hidden aria-label="道の駅を選ぶ"></section>
   <section id="station-editor" class="sheet tall" hidden aria-label="駅のメモを書く"></section>
 

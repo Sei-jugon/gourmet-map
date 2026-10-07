@@ -693,3 +693,33 @@ button:disabled { opacity: 0.5; }
 .note-sec .note-title { margin-bottom: 0; }
 
 .michi-popup .michi-verify { margin: 4px 0 0; font-size: 0.8rem; color: var(--warn); }
+
+/* ===== 記録を消す ===== */
+/* 吹き出しのいちばん下に、小さな文字のボタン(ほかのボタンから離す) */
+.pin-popup .delete-link {
+  display: block;
+  margin: 14px 0 0 auto;
+  min-height: 40px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--error);
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+/* 確認の画面: 「やめる」を大きく上に、「消す」は下に離して小さく赤い枠 */
+.delete-confirm {
+  display: block;
+  margin: 28px 0 0 auto;
+  min-height: 44px;
+  min-width: 96px;
+  padding: 0 16px;
+  border: 2px solid var(--error);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--error);
+  font-size: 0.95rem;
+  font-weight: bold;
+}
+.delete-confirm:disabled { opacity: 0.5; }
+.modal .delete-shared { font-size: 0.8rem; color: var(--warn); }

@@ -210,8 +210,38 @@ function buildPopup(pin) {
   gmap.rel = 'noopener';
   box.append(gmap);
 
+  // 自分の記録だけ、いちばん下に小さく「消す」(押し間違えにくいよう、ほかのボタンから離して置く)
+  if (pin.mine) box.append(button('delete-link', 'この記録を消す', () => openDeleteModal(pin)));
+
   return box;
 }
+
+// ===== 記録を消す =====
+let deletingPin = null;
+
+function openDeleteModal(pin) {
+  deletingPin = pin;
+  map.closePopup();
+  // 見せていた(共有ON)記録の時だけ、取り戻せない写真の断り書きを出す
+  $('delete-shared-note').hidden = !(pin.shared && !pin.pending);
+  $('delete-error').textContent = '';
+  $('delete-ok').disabled = false;
+  $('delete-modal').hidden = false;
+}
+
+$('delete-cancel').addEventListener('click', () => { $('delete-modal').hidden = true; });
+$('delete-ok').addEventListener('click', async () => {
+  $('delete-ok').disabled = true;
+  $('delete-error').textContent = '';
+  try {
+    await store.deleteRecord(deletingPin);
+    $('delete-modal').hidden = true;
+    showToast('記録を消しました');
+  } catch (e) {
+    $('delete-error').textContent = e.message;
+    $('delete-ok').disabled = false;
+  }
+});
 
 // 自分の記録だけに出る「家族に見せる/見せない」の切り替え
 function buildShareToggle(pin) {

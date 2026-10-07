@@ -178,6 +178,29 @@ export async function createRecord({ lat, lng, photoBlob, memo, stars, recordedA
   return id;
 }
 
+// ===== 自分の記録を消す =====
+// - まだ送れていない記録(未送信): スマホの中の控え(未送信の操作)を消すだけ。
+// - 送った記録: 電波がある時だけ消せる(圏外では受け付けない。未送信と混ざる複雑さを避けるため)。
+//   その記録に向けた、まだ送れていない操作(見せる/見せない・一言など)も一緒に消す。
+const opTargetsPin = (op, pinId) => op.payload.id === pinId || op.payload.pinId === pinId;
+
+export async function deleteRecord(pin) {
+  if (!pin.mine) throw new Error('自分の記録だけ消せます');
+  if (!pin.pending) {
+    if (backend.isFakeOffline() || !navigator.onLine) throw new backend.NetworkError('電波がある時に消せます');
+    try {
+      await backend.deletePin(pin);
+    } catch (e) {
+      if (e instanceof backend.NetworkError) throw new backend.NetworkError('電波がある時に消せます');
+      throw e;
+    }
+  }
+  for (const op of await db.getAll('outbox')) {
+    if (opTargetsPin(op, pin.id)) await db.del('outbox', op.seq);
+  }
+  changed();
+}
+
 export const setShared = (id, shared) => enqueue('setShared', { id, shared });
 export const updatePin = (id, memo, stars) => enqueue('updatePin', { id, memo, stars });
 export const addReaction = (pinId, memo, stars) =>

@@ -221,6 +221,36 @@ async function updateOwn(id, fields) {
   if (!data || data.length === 0) throw new Error('自分の記録だけ変更できます');
 }
 
+// 自分の記録を消す。写真(と将来の小さな写真)を先に消し、消えたことを確かめてから記録を消す。
+// 写真が消せなかった時は、記録を消さずに止める(写真だけが残る状態を作らない)。
+// 付いた「一言・星」(reactions)は、保存先の決まり(on delete cascade)で記録と一緒に消える。
+async function photoStillThere(path) {
+  const { data } = await client.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/${BUCKET}/${path}?nocache=${crypto.randomUUID()}`, {
+    headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${data.session?.access_token}` },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  return res.ok;
+}
+
+export async function deletePin(pin) {
+  ensureOnline();
+  const paths = [pin.photoPath, pin.thumbPath].filter(Boolean);
+  for (const path of paths) {
+    if (!path.startsWith(`${user.id}/`)) throw new Error('自分の写真だけ消せます');
+    const { error } = await client.storage.from(BUCKET).remove([path]);
+    if (error) fail(error, `写真を消せませんでした: ${error.message}`);
+    // 断られても「エラーなし・0件」で返ることがあるため、本当に消えたかを読み出して確かめる
+    let still;
+    try { still = await photoStillThere(path); } catch (e) { fail(e); }
+    if (still) throw new Error('写真を消せませんでした。記録は消していません');
+  }
+  const { data, error } = await limited(client.from('pins').delete().eq('id', pin.id).select('id'));
+  if (error) fail(error, `記録を消せませんでした: ${error.message}`);
+  if (!data || data.length === 0) throw new Error('記録を消せませんでした(自分の記録だけ消せます)');
+}
+
 export const setShared = (id, shared) => updateOwn(id, { shared });
 export const updatePin = (id, { memo, stars }) => updateOwn(id, { memo, stars });
 

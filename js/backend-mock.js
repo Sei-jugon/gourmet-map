@@ -114,6 +114,24 @@ export async function insertPin(pin) {
   });
 }
 
+// 試験用: 写真が消せない状態をまねる
+let failPhotoDelete = false;
+export function setFailPhotoDelete(value) { failPhotoDelete = value; }
+
+// 自分の記録を消す(本物と同じ順番: 写真 → 記録。写真が消せなければ記録は残す。付いた一言・星も消える)
+export async function deletePin(pin) {
+  ensureOnline();
+  const row = await db.get('mock_pins', pin.id);
+  if (!row || row.owner_id !== ME.id) throw new Error('記録を消せませんでした(自分の記録だけ消せます)');
+  for (const path of [row.photo_path, row.thumb_path].filter(Boolean)) {
+    if (!path.startsWith(`${ME.id}/`)) throw new Error('自分の写真だけ消せます');
+    if (failPhotoDelete) throw new Error('写真を消せませんでした。記録は消していません');
+    await db.del('mock_photos', path);
+  }
+  for (const r of (await db.getAll('mock_reactions')).filter((r) => r.pin_id === pin.id)) await db.del('mock_reactions', r.id);
+  await db.del('mock_pins', pin.id);
+}
+
 async function ownPin(id) {
   const row = await db.get('mock_pins', id);
   if (!row || row.owner_id !== ME.id) throw new Error('自分の記録だけ変更できます');
