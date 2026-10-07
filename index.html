@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f6f5c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="グルメ地図">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>ツーリンググルメ地図</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>グルメ地図</h1>
+    <div class="topbar-right">
+      <button id="michi-chip" class="chip michi" type="button" hidden aria-label="道の駅の表示を切り替える"></button>
+      <button id="outbox-badge" class="chip warn" type="button" hidden></button>
+      <button id="user-chip" class="chip" type="button" hidden aria-label="ログアウト"></button>
+    </div>
+  </header>
+
+  <div id="trial-bar" class="trial-bar" hidden>試験中: 記録の「一言」に必ず「試験」と書いてください(後で消すための目印)</div>
+
+  <div id="offline-bar" class="offline-bar" hidden>圏外: 記録はスマホに保存し、電波が戻ると送ります</div>
+
+  <main id="map" aria-label="記録したお店の地図"></main>
+
+  <button id="michi-counter" class="michi-counter" type="button" hidden aria-label="道の駅の訪問数(押すと地域ごと)"></button>
+
+  <!-- 地図で場所を選ぶ時の十字 -->
+  <div id="crosshair" class="crosshair" hidden aria-hidden="true"></div>
+  <div id="place-bar" class="place-bar" hidden>
+    <p>地図を動かして、十字をお店に合わせてください</p>
+    <div class="row">
+      <button id="place-cancel" class="btn sub" type="button">やめる</button>
+      <button id="place-ok" class="btn main" type="button">ここに置く</button>
+    </div>
+    <button id="place-station" class="btn sub wide" type="button">道の駅を選ぶ</button>
+  </div>
+
+  <div id="bottom-bar" class="bottom-bar">
+    <button id="later-btn" class="later-btn" type="button">あとから<br>登録</button>
+    <button id="record-btn" class="record-btn" type="button">📷 ここに記録</button>
+  </div>
+
+  <input id="camera-input" type="file" accept="image/*" hidden>
+  <input id="library-input" type="file" accept="image/*" hidden>
+
+  <!-- 記録の確認 -->
+  <section id="record-sheet" class="sheet" hidden aria-label="記録の確認">
+    <img id="record-preview" class="sheet-photo" alt="記録する写真">
+    <p id="loc-status" class="loc-status"></p>
+    <button id="perm-help-btn" class="btn warn wide" type="button" hidden>位置情報を許可する手順を見る</button>
+    <button id="pick-place-btn" class="btn sub wide" type="button" hidden>地図で場所を選ぶ</button>
+    <label id="date-row" class="field" hidden>行った日
+      <input id="record-date" type="date">
+    </label>
+    <div class="field">星(なくてもOK)
+      <div id="record-stars" class="stars-input"></div>
+    </div>
+    <label class="field">一言(なくてもOK)
+      <input id="record-memo" type="text" maxlength="200" placeholder="例: 味噌ラーメンが濃厚">
+    </label>
+    <div class="row">
+      <button id="record-cancel" class="btn sub" type="button">やめる</button>
+      <button id="record-save" class="btn main" type="button">保存</button>
+    </div>
+  </section>
+
+  <!-- 一言・星(自分の記録の修正 / もう一人の追加) -->
+  <section id="note-sheet" class="sheet" hidden aria-label="一言と星">
+    <h2 id="note-title" class="sheet-title"></h2>
+    <div class="field">星
+      <div id="note-stars" class="stars-input"></div>
+    </div>
+    <label class="field">一言
+      <input id="note-memo" type="text" maxlength="200">
+    </label>
+    <div class="row">
+      <button id="note-cancel" class="btn sub" type="button">やめる</button>
+      <button id="note-save" class="btn main" type="button">保存</button>
+    </div>
+  </section>
+
+  <!-- 位置情報を拒否した時の再許可手順(端末の種類で中身を替える) -->
+  <div id="perm-modal" class="modal" hidden>
+    <div class="modal-box">
+      <h2>位置情報を許可する手順</h2>
+      <div id="perm-steps"></div>
+      <p class="note">許可したら、アプリを一度閉じて開き直し、もう一度「ここに記録」を押してください。今回は「地図で場所を選ぶ」でも記録できます。</p>
+      <button id="perm-close" class="btn main wide" type="button">閉じる</button>
+    </div>
+  </div>
+
+  <!-- 新しい版のお知らせ -->
+  <div id="update-bar" class="update-bar" hidden>
+    <span>新しい版があります</span>
+    <button id="update-btn" class="btn main" type="button">更新する</button>
+  </div>
+
+  <!-- ログイン(家族だけ) -->
+  <div id="login-screen" class="login-screen" hidden>
+    <form id="login-form" class="login-box" autocomplete="on">
+      <h2>グルメ地図にログイン</h2>
+      <p>家族だけが使えます。施主から聞いたメールアドレスとパスワードを入れてください。</p>
+      <label class="field">メールアドレス
+        <input id="login-email" type="email" autocomplete="username" required>
+      </label>
+      <label class="field">パスワード
+        <input id="login-password" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="login-error" role="alert"></p>
+      <button id="login-btn" class="btn main wide" type="submit">ログイン</button>
+    </form>
+  </div>
+
+  <!-- 十字の近くに道の駅がある時の確認(自動では引っぱらない) -->
+  <div id="snap-modal" class="modal" hidden>
+    <div class="modal-box">
+      <h2 id="snap-text"></h2>
+      <p class="note">「はい」で記録の位置を道の駅の位置にそろえます。「いいえ」で十字の位置のまま記録します。</p>
+      <div class="row">
+        <button id="snap-no" class="btn sub" type="button">いいえ</button>
+        <button id="snap-yes" class="btn main" type="button">はい</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 手で付ける「行った」(昔の分) -->
+  <div id="visit-modal" class="modal" hidden>
+    <div class="modal-box">
+      <h2 id="visit-title"></h2>
+      <label class="field">行った日(分かれば。なくてもOK)
+        <input id="visit-date" type="date">
+      </label>
+      <div class="row">
+        <button id="visit-cancel" class="btn sub" type="button">やめる</button>
+        <button id="visit-ok" class="btn main" type="button">行ったにする</button>
+      </div>
+    </div>
+  </div>
+
+  <section id="station-picker" class="sheet tall" hidden aria-label="道の駅を選ぶ"></section>
+  <section id="station-editor" class="sheet tall" hidden aria-label="駅のメモを書く"></section>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <div id="photo-viewer" class="photo-viewer" hidden>
+    <img id="photo-viewer-img" alt="">
+    <button id="photo-viewer-close" class="photo-viewer-close" type="button">閉じる</button>
+  </div>
+
+  <!-- 試験用(アドレスに ?dev=1 を付けた時だけ表示) -->
+  <div id="dev-panel" class="dev-panel" hidden>
+    <label><input id="dev-offline" type="checkbox"> 圏外のふり</label>
+    <span id="dev-me"></span>
+    <span id="dev-version"></span>
+    <button id="dev-reset" type="button">見本を初期化</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"
+          integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

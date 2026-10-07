@@ -1,0 +1,695 @@
+/* 休憩中に手袋を外して片手で操作する前提: 文字と押す場所は大きめ */
+:root {
+  --main: #1f6f5c;
+  --husband: #2563eb;
+  --wife: #ea580c;
+  --son: #16a34a;
+  --child: #9333ea;
+  --warn: #d97706;
+  --error: #dc2626;
+  --text: #1f2937;
+  --sub: #6b7280;
+  --line: #e5e7eb;
+  --bg: #ffffff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+button { font-family: inherit; color: inherit; }
+button:disabled { opacity: 0.5; }
+
+/* ===== 上の帯 ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 8px 16px;
+  padding-top: calc(8px + env(safe-area-inset-top));
+  background: var(--main);
+  color: #fff;
+}
+
+.topbar h1 { margin: 0; font-size: 1.1rem; white-space: nowrap; }
+
+.topbar-right { display: flex; gap: 6px; }
+
+.chip {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  background: transparent;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.chip.warn { background: var(--warn); border-color: var(--warn); }
+.chip.error { background: var(--error); border-color: var(--error); }
+.chip[hidden] { display: none; }
+
+.offline-bar {
+  padding: 8px 16px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.offline-bar[hidden] { display: none; }
+
+#map { flex: 1; }
+
+/* ===== 下のボタン ===== */
+.bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(12px + var(--attr-h, 20px) + env(safe-area-inset-bottom));
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.bottom-bar > * { pointer-events: auto; }
+.bottom-bar[hidden] { display: none; }
+
+.record-btn {
+  flex: 0 1 260px;
+  min-height: 64px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 32px;
+  background: var(--main);
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: bold;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.later-btn {
+  flex: 0 0 64px;
+  height: 64px;
+  border: 2px solid var(--main);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--main);
+  font-size: 0.75rem;
+  font-weight: bold;
+  line-height: 1.2;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.record-btn:active, .later-btn:active, .btn:active { filter: brightness(0.9); }
+
+/* ===== 共通ボタン ===== */
+.btn {
+  min-height: 52px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1.05rem;
+  font-weight: bold;
+}
+
+.btn.main { background: var(--main); color: #fff; }
+.btn.sub { background: #f3f4f6; color: var(--text); }
+.btn.wide { display: block; width: 100%; margin-top: 8px; }
+.btn[hidden] { display: none; }
+
+.row { display: flex; gap: 10px; margin-top: 12px; }
+.row .btn { flex: 1; }
+
+/* ===== ピン(記録した人で色分け) ===== */
+/* 丸(40px)の下に、とがった先(10px)。先の先端が記録の位置(地図の基準点) */
+.pin-icon {
+  --pin: var(--child);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--pin);
+  font-size: 19px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.pin-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -11px;
+  transform: translateX(-50%);
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 10px solid var(--pin);
+}
+
+.pin-icon.husband { --pin: var(--husband); }
+.pin-icon.wife { --pin: var(--wife); }
+.pin-icon.son { --pin: var(--son); }
+.pin-icon.child { --pin: var(--child); }
+
+/* 縮小時に近くの記録をまとめるマーク(数字つきの丸)。道の駅の赤い四角と形・色で見分ける */
+.pin-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--main);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  box-shadow: 0 0 0 4px rgba(31, 111, 92, 0.35), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* 自分だけの記録は点線の縁、未送信は黄色の縁 */
+.pin-icon.private { border-style: dashed; opacity: 0.85; }
+.pin-icon.pending { border-color: #facc15; border-style: dashed; }
+
+/* ===== 吹き出し ===== */
+.leaflet-popup-content { margin: 12px; width: 240px !important; }
+
+.leaflet-container a.leaflet-popup-close-button {
+  width: 40px;
+  height: 40px;
+  font-size: 28px;
+  line-height: 36px;
+}
+
+.pin-popup img {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 8px;
+  cursor: zoom-in;
+}
+
+.pin-popup img[hidden] { display: none; }
+
+.pin-popup .photo-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 80px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  color: var(--sub);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.pin-popup .photo-note[hidden] { display: none; }
+
+.pin-popup .meta { margin: 8px 0 2px; font-size: 0.85rem; color: var(--sub); }
+.pin-popup .recorder { font-weight: bold; }
+.pin-popup .recorder.husband { color: var(--husband); }
+.pin-popup .recorder.wife { color: var(--wife); }
+.pin-popup .recorder.son { color: var(--son); }
+.pin-popup .recorder.child { color: var(--child); }
+
+.pin-popup .status { margin: 4px 0; font-size: 0.9rem; font-weight: bold; }
+.pin-popup .status.pending { color: var(--warn); }
+.pin-popup .status.failed { color: var(--error); }
+
+.pin-popup .stars { font-size: 1.2rem; color: #f59e0b; letter-spacing: 1px; }
+.pin-popup .memo { margin: 4px 0; font-size: 1rem; }
+
+.pin-popup .reactions {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f3f4f6;
+  font-size: 0.9rem;
+}
+
+.pin-popup .share-row { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.pin-popup .share-state { display: block; margin-bottom: 6px; font-size: 0.9rem; color: var(--sub); }
+
+.pin-popup .share-btn {
+  width: 100%;
+  min-height: 48px;
+  border: none;
+  border-radius: 8px;
+  background: var(--line);
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.pin-popup .btn.wide { min-height: 48px; font-size: 1rem; }
+
+.pin-popup .gmap-btn {
+  display: block;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff;
+  border: 2px solid var(--main);
+  color: var(--main);
+  font-size: 1rem;
+  font-weight: bold;
+  text-align: center;
+  text-decoration: none;
+}
+
+/* ===== 下から出る入力欄 ===== */
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1050;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  border-radius: 16px 16px 0 0;
+  background: #fff;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.sheet[hidden] { display: none; }
+
+.sheet-title { margin: 0 0 8px; font-size: 1.1rem; }
+
+.sheet-photo {
+  display: block;
+  width: 100%;
+  max-height: 32vh;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #f3f4f6;
+}
+
+.loc-status { margin: 10px 0 0; font-size: 0.95rem; color: var(--warn); font-weight: bold; }
+.loc-status.ok { color: var(--main); }
+
+.field { display: block; margin-top: 12px; font-size: 0.95rem; color: var(--sub); }
+
+.field input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 4px;
+  padding: 0 12px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  font-size: 1.05rem; /* 16px以上にして、入力時にiPhoneが勝手に拡大しないようにする */
+  color: var(--text);
+}
+
+.field[hidden] { display: none; }
+
+.stars-input { display: flex; gap: 4px; margin-top: 4px; }
+
+.stars-input .star {
+  flex: 1;
+  min-height: 52px;
+  border: none;
+  border-radius: 10px;
+  background: #fffbeb;
+  color: #f59e0b;
+  font-size: 1.8rem;
+}
+
+/* ===== 地図で場所を選ぶ ===== */
+.crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 1000;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--error), var(--error)) center / 3px 100% no-repeat,
+    linear-gradient(var(--error), var(--error)) center / 100% 3px no-repeat;
+}
+
+.crosshair[hidden], .place-bar[hidden] { display: none; }
+
+.place-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1050;
+  padding: 12px 16px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  background: #fff;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.place-bar p { margin: 0; font-size: 1rem; font-weight: bold; text-align: center; }
+
+/* ===== お知らせ・写真の拡大 ===== */
+/* お知らせは上に出す(下の入力欄やボタンに重ならないように) */
+.toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: calc(64px + env(safe-area-inset-top));
+  z-index: 1100;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(31, 41, 55, 0.92);
+  color: #fff;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.92);
+}
+
+.photo-viewer[hidden], .toast[hidden] { display: none; }
+
+.photo-viewer img { max-width: 100%; max-height: 100%; }
+
+.photo-viewer-close {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top));
+  right: 16px;
+  min-width: 88px;
+  min-height: 48px;
+  border: none;
+  border-radius: 24px;
+  background: #fff;
+  font-size: 1.05rem;
+  font-weight: bold;
+}
+
+/* ===== 試験用 ===== */
+.dev-panel {
+  position: fixed;
+  top: calc(64px + env(safe-area-inset-top));
+  right: 8px;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 2px dashed var(--error);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.8rem;
+}
+
+.dev-panel[hidden] { display: none; }
+
+/* ===== 位置情報の再許可手順 ===== */
+.btn.warn { background: #fef3c7; color: #92400e; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.modal[hidden] { display: none; }
+
+.modal-box {
+  width: 100%;
+  max-width: 400px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.modal-box h2 { margin: 0 0 8px; font-size: 1.25rem; }
+.modal-box h3 { margin: 14px 0 4px; font-size: 1rem; color: var(--main); }
+.modal-box ol { margin: 0; padding-left: 1.4em; }
+.modal-box li { margin: 4px 0; font-size: 1rem; line-height: 1.5; }
+.modal-box .note { margin: 12px 0 0; font-size: 0.9rem; color: var(--sub); }
+
+/* ===== 新しい版のお知らせ ===== */
+.update-bar {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: calc(64px + env(safe-area-inset-top));
+  z-index: 1120;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  font-weight: bold;
+}
+
+.update-bar[hidden] { display: none; }
+
+/* ===== ログイン ===== */
+.login-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--main);
+}
+
+.login-screen[hidden] { display: none; }
+
+.login-box {
+  width: 100%;
+  max-width: 380px;
+  padding: 24px 20px;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.login-box h2 { margin: 0 0 8px; font-size: 1.3rem; }
+.login-box p { margin: 0 0 4px; color: var(--sub); font-size: 0.95rem; }
+.login-error { min-height: 1.4em; margin-top: 10px !important; color: var(--error) !important; font-weight: bold; }
+
+.trial-bar {
+  padding: 8px 16px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.9rem;
+  font-weight: bold;
+  text-align: center;
+}
+
+.trial-bar[hidden] { display: none; }
+
+.pin-icon.unknown { --pin: var(--child); }
+
+/* ===== 道の駅 ===== */
+.chip.michi { background: transparent; }
+.chip.michi.on { background: #fff; color: var(--main); border-color: #fff; }
+.topbar h1 { overflow: hidden; text-overflow: ellipsis; }
+.topbar-right { flex-shrink: 1; min-width: 0; overflow-x: auto; }
+
+.michi-popup .michi-name { margin: 0; font-size: 1.05rem; font-weight: bold; }
+.michi-popup .michi-place { margin: 4px 0 0; font-size: 0.9rem; color: var(--sub); }
+.michi-popup .gmap-btn {
+  display: block;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff;
+  border: 2px solid var(--main);
+  color: var(--main);
+  font-size: 1rem;
+  font-weight: bold;
+  text-align: center;
+  text-decoration: none;
+}
+
+/* 出典は読める大きさで、地図の下の端に */
+.leaflet-control-attribution { font-size: 11px; line-height: 1.4; }
+
+/* ===== 道の駅のマーク(自作。食事の記録の丸いピンと形・色で見分ける) ===== */
+:root { --michi: #be123c; }
+
+.michi-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin: 5px; /* 押せる範囲は44px */
+  border: 3px solid var(--michi);
+  border-radius: 9px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.michi-badge.visited { background: var(--michi); color: #fff; }
+.michi-badge.unvisited { background: #fff; color: var(--michi); }
+
+.michi-popup .michi-state { margin: 6px 0 0; font-size: 0.9rem; color: var(--sub); font-weight: bold; }
+.michi-popup .michi-state.visited { color: var(--michi); }
+
+.michi-counter {
+  position: fixed;
+  top: calc(64px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 900;
+  max-width: calc(100% - 140px);
+  min-height: 40px;
+  padding: 0 14px;
+  border: 2px solid var(--michi);
+  border-radius: 20px;
+  background: #fff;
+  color: var(--michi);
+  font-size: 0.95rem;
+  font-weight: bold;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  white-space: pre-line; /* 押すと2行目に地域ごとの数 */
+  line-height: 1.35;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.michi-counter[hidden] { display: none; }
+
+/* ===== 道の駅を選ぶ・駅のメモを書く(下から出る、背の高い画面) ===== */
+.sheet.tall { max-height: 92vh; z-index: 1110; }
+
+.picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.picker-head .sheet-title { margin: 0; }
+.picker-close { min-height: 44px; }
+
+.picker-tabs { display: flex; gap: 6px; margin-top: 10px; }
+.picker-tab {
+  flex: 1;
+  min-height: 44px;
+  border: 2px solid var(--line);
+  border-radius: 22px;
+  background: #fff;
+  font-size: 0.95rem;
+  font-weight: bold;
+}
+.picker-tab.active { border-color: var(--michi); background: var(--michi); color: #fff; }
+
+.picker-counts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.picker-count { padding: 4px 10px; border-radius: 14px; background: #f3f4f6; font-size: 0.85rem; }
+.picker-count.complete { background: #fde68a; font-weight: bold; }
+
+.picker-list { margin: 10px 0 0; padding: 0; list-style: none; }
+.picker-pref { margin-top: 10px; padding: 4px 0; font-weight: bold; color: var(--sub); border-bottom: 1px solid var(--line); }
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.picker-item:active { background: #f9fafb; }
+.picker-mark {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid var(--michi);
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 900;
+  box-sizing: border-box;
+}
+.picker-mark.visited { background: var(--michi); color: #fff; }
+.picker-mark.unvisited { background: #fff; color: var(--michi); }
+.picker-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.picker-name { font-weight: bold; font-size: 1rem; }
+.picker-sub { font-size: 0.8rem; color: var(--sub); }
+.picker-right { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; font-size: 0.85rem; }
+.picker-state { font-weight: bold; color: var(--michi); }
+.picker-item[data-state="todo"] .picker-state { color: var(--sub); }
+.picker-dist { color: var(--sub); }
+.picker-empty { padding: 16px 0; color: var(--sub); text-align: center; }
+
+/* 駅のメモを書く画面 */
+.editor-rules { margin: 10px 0 0; padding: 10px 12px 10px 28px; border-radius: 10px; background: #fef3c7; color: #92400e; font-size: 0.88rem; line-height: 1.5; }
+.editor-section { margin: 12px 0 0; padding: 8px 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.editor-section legend { padding: 0 6px; font-weight: bold; color: var(--michi); }
+.editor-section input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 10px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+.editor-row { padding: 6px 0 10px; border-bottom: 1px dashed var(--line); }
+.editor-row:last-child { border-bottom: none; }
+.editor-rank { margin: 4px 0 0; font-weight: bold; }
+.editor-hint { margin: 10px 0 0; font-size: 0.85rem; color: var(--sub); }
+.editor-tv-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; }
+.editor-tv-item.deleted span { text-decoration: line-through; color: var(--sub); }
+.editor-error { margin-top: 12px !important; }
+
+/* 道の駅の吹き出しに足す中身 */
+.station-extra { margin-top: 8px; }
+.note-sec { margin-top: 8px; padding: 6px 8px; border-radius: 8px; background: #f9fafb; }
+.note-sec.gourmet { background: #fff7ed; }
+.note-title { margin: 0 0 2px; font-size: 0.85rem; font-weight: bold; color: var(--michi); }
+.note-line { margin: 2px 0; font-size: 0.88rem; line-height: 1.45; }
+.note-link { font-size: 0.8rem; color: var(--main); }
+.station-extra .btn.wide { min-height: 46px; font-size: 0.95rem; }
+
+.modal .note { margin: 0 0 12px; color: var(--sub); font-size: 0.9rem; }
+
+/* 駅のメモが多い時、吹き出しが画面の下のボタンにかからないよう、中でスクロールする */
+.leaflet-popup-content .michi-popup { max-height: 52vh; overflow-y: auto; overscroll-behavior: contain; }
+.note-sec .note-title { margin-bottom: 0; }
+
+.michi-popup .michi-verify { margin: 4px 0 0; font-size: 0.8rem; color: var(--warn); }
