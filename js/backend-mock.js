@@ -39,6 +39,18 @@ export function me() {
   return { ...ME };
 }
 
+// 見本のパスワード(試験用。本物のパスワードではない)。保存はせず、開いている間だけ覚える
+export const MOCK_INITIAL_PASSWORD = 'mihon-pass-1234';
+const mockPasswords = new Map();
+
+export async function changePassword(current, next) {
+  ensureOnline();
+  const now = mockPasswords.get(ME.id) ?? MOCK_INITIAL_PASSWORD;
+  if (current !== now) throw new Error('今のパスワードが違います');
+  if (next === now) throw new Error('今と同じパスワードには変えられません');
+  mockPasswords.set(ME.id, next);
+}
+
 export function members() {
   return MEMBERS.map((m) => ({ ...m }));
 }

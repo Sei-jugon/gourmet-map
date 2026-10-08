@@ -21,6 +21,7 @@
     <h1>グルメ地図</h1>
     <div class="topbar-right">
       <button id="michi-chip" class="chip michi" type="button" hidden aria-label="道の駅の表示を切り替える"></button>
+      <button id="banana-chip" class="chip banana" type="button" hidden aria-label="せっかくグルメ登場店(🍌)の表示を切り替える"></button>
       <button id="outbox-badge" class="chip warn" type="button" hidden></button>
       <button id="user-chip" class="chip" type="button" hidden aria-label="ログアウト"></button>
     </div>
@@ -157,6 +158,38 @@
       <button id="delete-cancel" class="btn main wide" type="button">やめる</button>
       <button id="delete-ok" class="delete-confirm" type="button">消す</button>
     </div>
+  </div>
+
+  <!-- 名前のメニュー -->
+  <div id="user-menu" class="modal" hidden>
+    <div class="modal-box">
+      <h2 id="user-menu-name"></h2>
+      <button id="menu-password" class="btn sub wide" type="button">パスワードを変える</button>
+      <button id="menu-logout" class="btn sub wide" type="button">ログアウト</button>
+      <button id="menu-close" class="btn main wide" type="button">閉じる</button>
+    </div>
+  </div>
+
+  <!-- パスワードを変える(パスワードはどこにも保存しない) -->
+  <div id="password-modal" class="modal" hidden>
+    <form id="password-form" class="modal-box" autocomplete="on" novalidate>
+      <h2>パスワードを変える</h2>
+      <p class="note">新しいパスワードは8文字以上。今のパスワードを確かめてから変えます。</p>
+      <label class="field">今のパスワード
+        <input id="pw-current" type="password" autocomplete="current-password">
+      </label>
+      <label class="field">新しいパスワード(8文字以上)
+        <input id="pw-new" type="password" autocomplete="new-password">
+      </label>
+      <label class="field">新しいパスワード(もう一度)
+        <input id="pw-again" type="password" autocomplete="new-password">
+      </label>
+      <p id="pw-error" class="login-error" role="alert"></p>
+      <div class="row">
+        <button id="pw-cancel" class="btn sub" type="button">やめる</button>
+        <button id="pw-save" class="btn main" type="submit">変える</button>
+      </div>
+    </form>
   </div>
 
   <section id="station-picker" class="sheet tall" hidden aria-label="道の駅を選ぶ"></section>

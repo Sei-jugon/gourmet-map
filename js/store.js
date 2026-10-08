@@ -26,6 +26,27 @@ export async function signIn(email, password) {
   return user;
 }
 
+// パスワードを変える。画面で先に確かめ(長さ・2つの一致)、電波がある時だけ保存先に頼む。
+// パスワードはどこにも保存しない
+export const PASSWORD_MIN = 8;
+const PASSWORD_MAX_BYTES = 72; // 保存先の上限(英数字なら72文字。日本語の文字は1文字で3つ分)
+
+export async function changePassword(current, next, again) {
+  if (!current) throw new Error('今のパスワードを入れてください');
+  if (!next) throw new Error('新しいパスワードを入れてください');
+  if (next !== again) throw new Error('新しいパスワードが2つで一致しません。同じものを2回入れてください');
+  if ([...next].length < PASSWORD_MIN) throw new Error(`新しいパスワードは${PASSWORD_MIN}文字以上にしてください`);
+  if (new TextEncoder().encode(next).length > PASSWORD_MAX_BYTES) throw new Error('新しいパスワードが長すぎます(英数字なら72文字まで)');
+  if (next === current) throw new Error('今と同じパスワードには変えられません');
+  if (backend.isFakeOffline() || !navigator.onLine) throw new backend.NetworkError('電波がある時に変えられます');
+  try {
+    await backend.changePassword(current, next);
+  } catch (e) {
+    if (e instanceof backend.NetworkError) throw new backend.NetworkError('電波がある時に変えられます');
+    throw e;
+  }
+}
+
 // ログアウト: スマホの中の記録の控え・未送信も消す(次に別の人が使っても見えないように)
 export async function signOut() {
   await backend.signOut();

@@ -136,6 +136,31 @@ export async function signIn(email, password) {
   return { ...user };
 }
 
+// パスワードを変える。今のパスワードでログインし直して確かめてから変える(間違っていたら変えない)。
+// パスワードはどこにも保存しない(保存先に渡すだけ)。
+export async function changePassword(current, next) {
+  ensureOnline();
+  const { data } = await client.auth.getSession();
+  const email = data.session?.user?.email;
+  if (!email) throw new Error('ログインし直してから変えてください');
+  const check = await client.auth.signInWithPassword({ email, password: current });
+  if (check.error) {
+    if (isNetworkFailure(check.error)) throw new NetworkError('電波がある時に変えられます');
+    if (/Invalid login credentials/i.test(check.error.message)) throw new Error('今のパスワードが違います');
+    if (check.error.status === 429) throw new Error('続けて何度も試したため、しばらく変えられません。時間をおいてください');
+    throw new Error(`今のパスワードを確かめられませんでした: ${check.error.message}`);
+  }
+  const { error } = await client.auth.updateUser({ password: next });
+  if (error) {
+    if (isNetworkFailure(error)) throw new NetworkError('電波がある時に変えられます');
+    if (error.code === 'same_password' || /different from the old password/i.test(error.message)) throw new Error('今と同じパスワードには変えられません');
+    if (error.code === 'weak_password' || /at least|weak|characters/i.test(error.message)) throw new Error('保存先に「弱いパスワード」と断られました。もっと長く、数字や記号もまぜてください');
+    if (error.code === 'reauthentication_needed') throw new Error('ログインし直してから変えてください');
+    if (error.status === 429) throw new Error('続けて何度も試したため、しばらく変えられません。時間をおいてください');
+    throw new Error(`パスワードを変えられませんでした: ${error.message}`);
+  }
+}
+
 export async function signOut() {
   setUser(null);
   memberList = [];

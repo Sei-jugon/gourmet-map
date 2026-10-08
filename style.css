@@ -723,3 +723,52 @@ button:disabled { opacity: 0.5; }
 }
 .delete-confirm:disabled { opacity: 0.5; }
 .modal .delete-shared { font-size: 0.8rem; color: var(--warn); }
+
+/* ===== 🍌 せっかくグルメ登場店の候補 ===== */
+/* 黄色い丸(先のとがりなし)。記録のピン(色つきの丸+とがった先)・道の駅(赤い四角)と形と色で見分ける */
+.banana-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin: 5px; /* 押せる範囲は44px */
+  border: 3px solid #a16207;
+  border-radius: 50%;
+  background: #fde047;
+  color: #713f12;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+}
+/* 番組のページあり・未確認は、少しうすく、破線の縁 */
+.banana-mark.program_page, .banana-mark.unconfirmed { border-style: dashed; opacity: 0.78; background: #fef9c3; }
+.banana-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: 3px solid #a16207;
+  border-radius: 50%;
+  background: #fde047;
+  color: #713f12;
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.35), 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.chip.banana { background: transparent; font-size: 1.1rem; }
+.chip.banana.on { background: #fde047; border-color: #fde047; color: #713f12; }
+.banana-popup .banana-name { margin: 0; font-size: 1.05rem; font-weight: bold; }
+.banana-popup .banana-menu { margin: 4px 0 0; font-size: 0.95rem; }
+.banana-popup .banana-aired { margin: 4px 0 0; font-size: 0.85rem; color: var(--sub); }
+.banana-popup .banana-status { margin: 6px 0 0; font-size: 0.9rem; font-weight: bold; color: var(--warn); }
+.banana-popup .banana-status.verified { color: var(--main); }
+.banana-popup .banana-note { margin: 4px 0 0; font-size: 0.8rem; color: var(--sub); }
+.banana-popup .banana-source { display: inline-block; margin-top: 6px; font-size: 0.9rem; color: var(--main); }
+.banana-popup .gmap-btn {
+  display: block; margin-top: 10px; padding: 12px; border-radius: 8px; background: #fff;
+  border: 2px solid var(--main); color: var(--main); font-size: 1rem; font-weight: bold; text-align: center; text-decoration: none;
+}

@@ -5,10 +5,15 @@
 export const STATION_ID_RE = /^m[0-9a-f]{10}$/;
 const URL_RE = /^https?:\/\//;
 
-function today() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// 日本時間の今日(YYYY-MM-DD)。スマホの時計の設定(時間帯)に関係なく、日本時間で決める。
+// 保存先の決まり(proposal-29)も日本時間の今日で判定するので、両方をそろえる。now は試験用
+export function todayInJapan(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
+
+let clockForTest = null; // 試験用: 「今」を決めて確かめる時だけ使う
+export function setClockForTest(date) { clockForTest = date; }
+const today = () => todayInJapan(clockForTest ?? new Date());
 
 const isPastOrToday = (day) => /^\d{4}-\d{2}-\d{2}$/.test(day) && day <= today();
 const len = (s) => [...(s || '')].length;

@@ -5,6 +5,8 @@ import { buildSteps } from './permission-help.js';
 import { createMichiLayer, recordsNear } from './michi-layer.js';
 import { openStationPicker } from './station-picker.js';
 import { openStationEditor } from './station-editor.js';
+import { todayInJapan } from './station-notes.js';
+import { createBananaLayer } from './banana-layer.js';
 
 const JAPAN_CENTER = [36.2, 138.25];
 const $ = (id) => document.getElementById(id);
@@ -36,6 +38,8 @@ window.michiLayer = createMichiLayer(map, {
   buildExtra: (station, visit) => buildStationExtra(station, visit),
 });
 window.appMap = map;
+// 「せっかくグルメ」登場店(🍌)の候補
+window.bananaLayer = createBananaLayer(map, { chip: $('banana-chip') });
 
 // 地図の隅の出典が下のボタンに隠れないよう、出典の高さの分だけボタンを上げる
 const attributionEl = map.attributionControl.getContainer();
@@ -357,13 +361,13 @@ function openVisitModal(station) {
   map.closePopup();
   $('visit-title').textContent = `道の駅 ${station.name} に行った`;
   $('visit-date').value = '';
-  $('visit-date').max = store.todayKey();
+  $('visit-date').max = todayInJapan();
   $('visit-modal').hidden = false;
 }
 $('visit-cancel').addEventListener('click', () => { $('visit-modal').hidden = true; });
 $('visit-ok').addEventListener('click', async () => {
   const day = $('visit-date').value || null;
-  if (day && day > store.todayKey()) {
+  if (day && day > todayInJapan()) {
     showToast('行った日に未来の日は使えません');
     return;
   }
@@ -873,7 +877,15 @@ function askLogin() {
   });
 }
 
-$('user-chip').addEventListener('click', async () => {
+// 名前のメニュー: パスワードを変える・ログアウト
+$('user-chip').addEventListener('click', () => {
+  $('user-menu-name').textContent = `${me.name}さん`;
+  $('menu-logout').hidden = store.usingMock; // 見本の時はログアウトしない(見本のデータが消えるため)
+  $('user-menu').hidden = false;
+});
+$('menu-close').addEventListener('click', () => { $('user-menu').hidden = true; });
+
+$('menu-logout').addEventListener('click', async () => {
   const { pending, failed } = await store.outboxStatus();
   const unsent = pending + failed.length;
   const message = unsent > 0
@@ -884,6 +896,38 @@ $('user-chip').addEventListener('click', async () => {
   location.reload();
 });
 
+// パスワードを変える(新規登録の入口は作らない。ログイン中の人が自分のパスワードを変えるだけ)
+$('menu-password').addEventListener('click', () => {
+  $('user-menu').hidden = true;
+  for (const id of ['pw-current', 'pw-new', 'pw-again']) $(id).value = '';
+  $('pw-error').textContent = '';
+  $('pw-save').disabled = false;
+  $('password-modal').hidden = false;
+});
+$('pw-cancel').addEventListener('click', () => {
+  for (const id of ['pw-current', 'pw-new', 'pw-again']) $(id).value = '';
+  $('password-modal').hidden = true;
+});
+$('password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const current = $('pw-current').value;
+  const next = $('pw-new').value;
+  const again = $('pw-again').value;
+  // 入力欄は送ったらすぐ空にする(画面にパスワードを残さない)
+  for (const id of ['pw-current', 'pw-new', 'pw-again']) $(id).value = '';
+  $('pw-error').textContent = '';
+  $('pw-save').disabled = true;
+  try {
+    await store.changePassword(current, next, again);
+    $('password-modal').hidden = true;
+    showToast('パスワードを変えました。次からは新しいパスワードでログインしてください', 5000);
+  } catch (err) {
+    $('pw-error').textContent = err.message;
+  } finally {
+    $('pw-save').disabled = false;
+  }
+});
+
 // ===== 起動 =====
 
 setupUpdates().catch(() => { /* 使えなくても通常表示は続ける */ });
@@ -891,7 +935,8 @@ setupUpdates().catch(() => { /* 使えなくても通常表示は続ける */ })
 me = await store.init();
 if (!me) me = await askLogin();
 $('user-chip').textContent = `👤 ${me.name}`;
-$('user-chip').hidden = !store.needsLogin;
+// 見本の時は、試験の時(?dev=1)だけ名前を出す
+$('user-chip').hidden = !store.needsLogin && params.get('dev') !== '1';
 setupDevPanel();
 $('trial-bar').hidden = !trialMode;
 await loadStationInfo();
