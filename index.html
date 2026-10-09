@@ -20,8 +20,6 @@
   <header class="topbar">
     <h1>グルメ地図</h1>
     <div class="topbar-right">
-      <button id="michi-chip" class="chip michi" type="button" hidden aria-label="道の駅の表示を切り替える"></button>
-      <button id="banana-chip" class="chip banana" type="button" hidden aria-label="せっかくグルメ登場店(🍌)の表示を切り替える"></button>
       <button id="outbox-badge" class="chip warn" type="button" hidden></button>
       <button id="user-chip" class="chip" type="button" hidden aria-label="ログアウト"></button>
     </div>
@@ -32,6 +30,14 @@
   <div id="offline-bar" class="offline-bar" hidden>圏外: 記録はスマホに保存し、電波が戻ると送ります</div>
 
   <main id="map" aria-label="記録したお店の地図"></main>
+
+  <!-- 表示の切り替え(地図の右に縦に並べる。小さい画面でも押しやすいように) -->
+  <div id="layer-stack" class="layer-stack" aria-label="地図に出す物の切り替え">
+    <button id="michi-chip" class="chip michi" type="button" hidden aria-label="道の駅の表示を切り替える"></button>
+    <button id="banana-chip" class="chip banana" type="button" hidden aria-label="せっかくグルメ登場店(🍌)の表示を切り替える"></button>
+    <button id="wish-chip" class="chip wish" type="button" aria-label="行きたい店の表示を切り替える">行きたい</button>
+    <button id="wish-list-btn" class="chip wish-list" type="button">行きたい一覧</button>
+  </div>
 
   <button id="michi-counter" class="michi-counter" type="button" hidden aria-label="道の駅の訪問数(押すと地域ごと)"></button>
 
@@ -49,6 +55,7 @@
   <div id="bottom-bar" class="bottom-bar">
     <button id="later-btn" class="later-btn" type="button">あとから<br>登録</button>
     <button id="record-btn" class="record-btn" type="button">📷 ここに記録</button>
+    <button id="wish-add-btn" class="later-btn wish-add" type="button">行きたい<br>追加</button>
   </div>
 
   <input id="camera-input" type="file" accept="image/*" hidden>
@@ -191,6 +198,69 @@
       </div>
     </form>
   </div>
+
+  <!-- 行きたい店を追加・直す(1画面で上から順に。タブや別の画面には分けない) -->
+  <section id="wish-sheet" class="sheet tall" hidden aria-label="行きたい店">
+    <div class="picker-head">
+      <h2 id="wish-sheet-title" class="sheet-title">行きたい店を追加</h2>
+      <button id="wish-cancel" class="btn sub picker-close" type="button">やめる</button>
+    </div>
+
+    <div id="wish-paste-area" class="wish-step">
+      <h3 class="wish-step-title">① リンクや文章を貼る(なくてもOK)</h3>
+      <p class="wish-hint">リンクが無くても、店名だけで始められます</p>
+      <textarea id="wish-paste" rows="2" placeholder="例: https://maps.app.goo.gl/… や WQH5+FW9 京都市、京都府"></textarea>
+      <button id="wish-read" class="btn sub wide" type="button">読み取る</button>
+    </div>
+    <p id="wish-paste-msg" class="wish-msg" role="status"></p>
+
+    <div class="wish-step">
+      <h3 class="wish-step-title">② 店名</h3>
+      <input id="wish-name" class="wish-input" type="text" maxlength="60" placeholder="例: 中国料理 揚子江">
+      <p class="wish-hint">店名が分からない時は、ジャンルを選ぶと「ラーメン(仮)」のような仮の名前で保存できます(あとで直せます)</p>
+      <div id="wish-genres" class="rec-chips"></div>
+    </div>
+
+    <div class="wish-step">
+      <h3 class="wish-step-title">③ 場所</h3>
+      <button id="wish-search" class="btn main wide" type="button">この店名で探す</button>
+      <p id="wish-search-msg" class="wish-msg" role="status"></p>
+      <ul id="wish-candidates" class="wish-candidates"></ul>
+      <button id="wish-wider" class="btn sub wide" type="button" hidden>もっと遠くも探す</button>
+      <p id="wish-search-attrib" class="wish-attrib"></p>
+      <p id="wish-place-status" class="wish-place-status none"></p>
+      <div id="wish-minimap" class="wish-minimap" aria-label="場所を確かめる地図"></div>
+      <p class="wish-hint">ピンを指で動かすか、地図を長押しして置けます。地図は2本の指で動かせます</p>
+      <button id="wish-center-btn" class="btn sub wide" type="button">この地図の真ん中に置く</button>
+      <label class="field">住所(分かれば)
+        <input id="wish-address" type="text" maxlength="120">
+      </label>
+    </div>
+
+    <div class="wish-step">
+      <h3 class="wish-step-title">④ そのほか</h3>
+      <div class="field">おすすめした人(いくつでも)
+        <div id="wish-recs" class="rec-chips"></div>
+        <div class="wish-search-row">
+          <input id="wish-rec-free" type="text" maxlength="20" placeholder="ほかの人(自由に)">
+          <button id="wish-rec-add" class="btn sub" type="button">足す</button>
+        </div>
+      </div>
+      <label class="field">メモ
+        <textarea id="wish-memo" rows="2" maxlength="200" placeholder="例: テレビで見た。昼だけ営業"></textarea>
+      </label>
+      <label class="field">元のリンク(Googleマップ・食べログなど)
+        <input id="wish-url" type="url" maxlength="500" placeholder="https://…">
+      </label>
+      <label class="switch-row"><input id="wish-private" type="checkbox"> 自分だけのメモ(家族には見せない)</label>
+    </div>
+
+    <p id="wish-warn" class="wish-warn" role="alert"></p>
+    <p id="wish-error" class="login-error" role="alert"></p>
+    <button id="wish-save" class="btn main wide" type="button">保存</button>
+  </section>
+
+  <section id="wish-list-sheet" class="sheet tall" hidden aria-label="行きたい店の一覧"></section>
 
   <section id="station-picker" class="sheet tall" hidden aria-label="道の駅を選ぶ"></section>
   <section id="station-editor" class="sheet tall" hidden aria-label="駅のメモを書く"></section>

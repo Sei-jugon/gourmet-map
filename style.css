@@ -772,3 +772,125 @@ button:disabled { opacity: 0.5; }
   display: block; margin-top: 10px; padding: 12px; border-radius: 8px; background: #fff;
   border: 2px solid var(--main); color: var(--main); font-size: 1rem; font-weight: bold; text-align: center; text-decoration: none;
 }
+
+/* ===== 表示の切り替え(地図の右に縦並び) ===== */
+.layer-stack {
+  position: fixed;
+  top: calc(118px + env(safe-area-inset-top));
+  right: 8px;
+  z-index: 950;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.layer-stack .chip {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 2px solid var(--line);
+  background: #fff;
+  color: var(--sub);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+.layer-stack .chip[hidden] { display: none; }
+.layer-stack .chip.michi.on { border-color: var(--michi); color: var(--michi); }
+.layer-stack .chip.banana.on { background: #fde047; border-color: #a16207; color: #713f12; }
+.layer-stack .chip.wish.on { border-color: var(--wish); color: var(--wish); }
+.layer-stack .chip.wish-list { color: var(--wish); border-color: var(--wish); font-size: 0.85rem; }
+/* 試験用の板は左に移す(切り替えと重ならないように) */
+.dev-panel { right: auto; left: 8px; top: calc(150px + env(safe-area-inset-top)); }
+
+/* ===== 行きたい店 ===== */
+:root { --wish: #db2777; }
+/* しおりの形(下に切れ込み)。記録の丸いピン・道の駅の四角・🍌の黄色い丸と、形と色で見分ける */
+.wish-mark {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 30px;
+  height: 40px;
+  margin: 2px 5px 4px;
+  padding-top: 6px;
+  background: var(--wish);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%);
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
+  box-sizing: border-box;
+}
+.wish-mark.private { background: repeating-linear-gradient(45deg, var(--wish), var(--wish) 5px, #f472b6 5px, #f472b6 10px); }
+.wish-mark.visited { background: #9ca3af; }
+.wish-mark.editing { background: #7c3aed; }
+.later-btn.wish-add { border-color: var(--wish); color: var(--wish); }
+
+.wish-popup .wish-name { margin: 0; font-size: 1.05rem; font-weight: bold; }
+.wish-popup .wish-recs { margin: 4px 0 0; font-size: 0.9rem; color: var(--wish); font-weight: bold; }
+.wish-popup .wish-memo { margin: 4px 0 0; font-size: 0.95rem; }
+.wish-popup .wish-sub { margin: 4px 0 0; font-size: 0.82rem; color: var(--sub); }
+.wish-popup .wish-sub.warn { color: var(--warn); }
+.wish-popup .wish-visited { margin: 4px 0 0; font-size: 0.9rem; font-weight: bold; color: var(--main); }
+.wish-popup .gmap-btn {
+  display: block; margin-top: 10px; padding: 12px; border-radius: 8px; background: #fff;
+  border: 2px solid var(--main); color: var(--main); font-size: 1rem; font-weight: bold; text-align: center; text-decoration: none;
+}
+.wish-popup .btn.wide { min-height: 46px; font-size: 0.95rem; }
+.wish-popup .delete-link { display: block; margin: 12px 0 0 auto; min-height: 40px; border: none; background: none; color: var(--error); font-size: 0.85rem; text-decoration: underline; }
+
+.wish-msg { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: #fdf2f8; color: #9d174d; font-size: 0.9rem; }
+.wish-msg:empty { display: none; }
+.field textarea {
+  display: block; width: 100%; margin-top: 4px; padding: 8px 10px; border: 2px solid var(--line); border-radius: 10px;
+  font-size: 1rem; font-family: inherit; color: var(--text); box-sizing: border-box;
+}
+.wish-search-row { display: flex; gap: 8px; margin-top: 4px; }
+.wish-search-row input { flex: 1; min-width: 0; margin-top: 0 !important; }
+.wish-search-row .btn { flex: 0 0 auto; min-height: 48px; }
+.wish-candidates { margin: 6px 0 0; padding: 0; list-style: none; }
+.wish-candidate { display: flex; justify-content: space-between; gap: 8px; min-height: 48px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 0.9rem; color: var(--text); }
+.wish-candidate .cand-src { flex: 0 0 auto; font-size: 0.75rem; color: var(--sub); }
+.wish-attrib { margin: 4px 0 0; font-size: 0.75rem; color: var(--sub); }
+.wish-place-status { margin: 12px 0 0; font-weight: bold; color: var(--main); font-size: 0.95rem; }
+.wish-place-status.none { color: var(--warn); }
+.rec-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.rec-chip { min-height: 40px; padding: 0 12px; border: 2px solid var(--line); border-radius: 20px; background: #fff; font-size: 0.95rem; font-weight: bold; color: var(--sub); }
+.rec-chip.on { border-color: var(--wish); background: var(--wish); color: #fff; }
+.switch-row { display: flex; align-items: center; gap: 8px; min-height: 48px; margin-top: 10px; font-size: 0.95rem; }
+.switch-row input { width: 24px; height: 24px; }
+.wish-warn { margin: 8px 0 0; color: var(--warn); font-weight: bold; font-size: 0.9rem; }
+.wish-warn:empty { display: none; }
+.picker-tabs.wrap { flex-wrap: wrap; }
+.picker-tabs.wrap .picker-tab { flex: 0 0 auto; padding: 0 12px; }
+.picker-tabs.wrap .picker-tab.active { border-color: var(--wish); background: var(--wish); }
+.picker-mark.wish { border-color: var(--wish); color: var(--wish); background: #fff; }
+.picker-mark.wish.visited { border-color: #9ca3af; color: #6b7280; }
+.wish-gmap { flex: 0 0 auto; font-size: 0.8rem; color: var(--main); }
+
+/* 行きたい店の追加(1画面で上から順に) */
+.wish-step { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+.wish-step:first-of-type { border-top: none; padding-top: 0; }
+.wish-step[hidden] { display: none; }
+.wish-step-title { margin: 0; font-size: 1rem; color: var(--text); }
+.wish-hint { margin: 4px 0 0; font-size: 0.82rem; color: var(--sub); }
+.wish-step textarea, .wish-input {
+  display: block; width: 100%; margin-top: 6px; padding: 8px 10px; border: 2px solid var(--line); border-radius: 10px;
+  font-size: 1rem; font-family: inherit; color: var(--text); box-sizing: border-box; min-height: 48px;
+}
+.wish-step .btn.wide { margin-top: 8px; }
+.rec-chip.genre.on { border-color: #ea580c; background: #ea580c; }
+.wish-candidate .cand-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.wish-candidate .cand-km { flex: 0 0 auto; font-weight: bold; color: var(--main); font-size: 0.85rem; }
+.wish-minimap { height: 220px; margin-top: 8px; border-radius: 10px; border: 2px solid var(--line); }
+.wish-provisional { display: inline-block; padding: 0 6px; border-radius: 6px; background: #ea580c; color: #fff; font-size: 0.75rem; font-weight: bold; vertical-align: middle; }
+.wish-popup .wish-source { display: block; margin-top: 6px; font-size: 0.85rem; color: var(--main); }
+/* 追加画面の小さな地図: 指の時は1本指で画面がスクロールし、2本指で地図が動く */
+.wish-minimap { position: relative; }
+.wish-minimap.two-finger { touch-action: pan-x pan-y; }
+.wish-minimap .leaflet-marker-icon { touch-action: none; } /* ピンは1本指で動かせる */
+.wish-touch-hint {
+  position: absolute; z-index: 1000; left: 50%; top: 8px; transform: translateX(-50%);
+  padding: 4px 10px; border-radius: 14px; background: rgba(31, 41, 55, 0.82); color: #fff;
+  font-size: 0.82rem; font-weight: bold; white-space: nowrap; pointer-events: none;
+}
+.wish-touch-hint[hidden] { display: none; }

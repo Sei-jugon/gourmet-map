@@ -1,0 +1,18 @@
+{
+ "note": "行きたい店の検索で使う外のサービス。止める・替える時はここだけ書き換えて公開し直す(アプリの作り直しは不要)。timeout_ms=待つ長さ、rest_on_block_ms=429か403を受けた時に呼ばない長さ。",
+ "gsi": {
+  "enabled": true,
+  "url": "https://msearch.gsi.go.jp/address-search/AddressSearch",
+  "attribution": "国土地理院",
+  "timeout_ms": 10000,
+  "rest_on_block_ms": 600000
+ },
+ "nominatim": {
+  "enabled": true,
+  "url": "https://nominatim.openstreetmap.org/search",
+  "attribution": "© OpenStreetMap contributors",
+  "min_interval_ms": 1000,
+  "timeout_ms": 10000,
+  "rest_on_block_ms": 600000
+ }
+}

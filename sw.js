@@ -3,7 +3,7 @@
 // 地図の絵(タイル)は、見たことのある範囲だけ控える(まとめて先読みはしない: OpenStreetMapの利用ルールのため)。
 // 写真や記録のデータはここでは控えない(見えなくなった記録が残らないように)。
 
-const VERSION = '2026.10.11-2';
+const VERSION = '2026.10.13-2';
 const SHELL_CACHE = `shell-${VERSION}`;
 const TILE_CACHE = 'tiles-v1';
 const MAX_TILES = 400;
@@ -27,6 +27,12 @@ const SHELL = [
   'js/record-shape.js',
   'js/michi-layer.js',
   'js/banana-layer.js',
+  'js/olc.js',
+  'js/wish-parse.js',
+  'js/geocode.js',
+  'js/wish-check.js',
+  'js/wish-ui.js',
+  'data/services.json',
   'data/banana-shops.json',
   'js/station-notes.js',
   'js/station-picker.js',
