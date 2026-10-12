@@ -7,6 +7,7 @@ import { openStationPicker } from './station-picker.js';
 import { openStationEditor } from './station-editor.js';
 import { todayInJapan } from './station-notes.js';
 import { createBananaLayer } from './banana-layer.js';
+import { initWishUI } from './wish-ui.js';
 
 const JAPAN_CENTER = [36.2, 138.25];
 const $ = (id) => document.getElementById(id);
@@ -398,6 +399,7 @@ async function render() {
   window.michiLayer.setOwnRecords(pins.filter((p) => p.mine && (p.photoPath || p.localPhoto)));
 
   currentPins = pins;
+  window.wishUI?.refresh();
   try { window.michiLayer.setManualVisits(await store.loadManualVisits()); } catch { /* 表がまだない時など。自動の「行った」だけで続ける */ }
 
   if (firstRender && pins.length > 0) {
@@ -480,7 +482,7 @@ function resetDraft() {
   if (draft.previewUrl) URL.revokeObjectURL(draft.previewUrl);
   Object.assign(draft, {
     mode: null, photo: null, previewUrl: null, position: null, positionError: null, positionDenied: false,
-    positionPromise: null, sheetShown: false,
+    positionPromise: null, sheetShown: false, fromWish: null,
   });
 }
 resetDraft();
@@ -540,9 +542,27 @@ $('camera-input').addEventListener('change', async (e) => {
 });
 
 $('library-input').addEventListener('change', async (e) => {
+  const wish = draft.fromWish;
   if (!(await takePhoto(e.target))) return;
+  if (wish) {
+    // 行きたい店から: 場所と店名を引き継いで、確認画面へ
+    draft.fromWish = wish;
+    finishPlacePick({ lat: wish.lat, lng: wish.lng }, `行きたい店「${wish.name}」の場所`);
+    $('record-memo').value = `${trialMode ? '試験 ' : ''}${wish.name}`;
+    return;
+  }
   startPlacePick();
 });
+
+// 行きたい店の「行った(記録する)」: 写真を選ぶ → 場所と店名を引き継いだ記録の確認画面
+function startRecordFromWish(wish) {
+  map.closePopup();
+  resetDraft();
+  draft.mode = 'later';
+  draft.fromWish = wish;
+  $('library-input').value = '';
+  $('library-input').click();
+}
 
 function openRecordSheet() {
   $('record-preview').src = draft.previewUrl;
@@ -711,7 +731,10 @@ $('record-save').addEventListener('click', async () => {
       stars: recordStars.get(),
       recordedAt: recordedAtValue(),
     });
+    const wishDone = draft.fromWish;
     closeRecordSheet();
+    // 行きたい店から記録した時は、その店に「行った」の印を付ける(消さずに残す)
+    if (wishDone) window.wishUI?.markVisited(wishDone, todayInJapan(new Date(recordedAtValue()))).catch((err) => showToast(err.message, 5000));
     map.setView([draft.position.lat, draft.position.lng], Math.max(map.getZoom(), 14));
     resetDraft();
     await store.sync();
@@ -939,6 +962,8 @@ $('user-chip').textContent = `👤 ${me.name}`;
 $('user-chip').hidden = !store.needsLogin && params.get('dev') !== '1';
 setupDevPanel();
 $('trial-bar').hidden = !trialMode;
+// 行きたい店メモ
+window.wishUI = initWishUI({ map, store, showToast, startRecordFromWish, todayInJapan });
 await loadStationInfo();
 await render();
 store.sync();

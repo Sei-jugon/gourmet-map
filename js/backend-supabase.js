@@ -8,6 +8,8 @@
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js';
 import { rowToRecord, noteRowToObj, gourmetRowToObj, tvRowToObj, visitRowToObj } from './record-shape.js';
 import { checkGourmetList, checkLocalPick, checkTv, checkVisit } from './station-notes.js';
+import { wishRowToObj, wishObjToRow } from './record-shape.js';
+import { checkWish } from './wish-check.js';
 
 const BUCKET = 'photos';
 
@@ -383,4 +385,42 @@ export async function removeManualVisit(stationId) {
   ensureOnline();
   const { error } = await limited(client.from('station_visits').delete().eq('station_id', stationId).eq('user_id', user.id));
   if (error) fail(error, `「行った」を外せませんでした: ${error.message}`);
+}
+
+// ===== 行きたい店 =====
+// 表は proposal-31-wishlist.sql(クラ確認後に施主が実行)。表がまだない時は、一覧は空・追加は「まだ使えません」。
+const WISH_NOT_READY = '行きたい店メモは、まだ使えません(保存先の準備待ちです)';
+
+export async function listWishes() {
+  ensureOnline();
+  const { data, error } = await limited(client.from('wishlist').select('*').order('created_at', { ascending: false }));
+  if (error) {
+    if (isMissingTable(error)) return [];
+    fail(error, '行きたい店を読み込めませんでした');
+  }
+  return data.map(wishRowToObj);
+}
+
+export async function addWish(w) {
+  ensureOnline();
+  const err = checkWish(w);
+  if (err) throw new Error(err);
+  const { error } = await limited(client.from('wishlist').upsert({ id: w.id, ...wishObjToRow(w) }, { onConflict: 'id', ignoreDuplicates: true }));
+  if (error) fail(error, isMissingTable(error) ? WISH_NOT_READY : `行きたい店を保存できませんでした: ${error.message}`);
+}
+
+export async function updateWish(id, w) {
+  ensureOnline();
+  const err = checkWish(w);
+  if (err) throw new Error(err);
+  const { data, error } = await limited(client.from('wishlist').update({ ...wishObjToRow(w), updated_at: new Date().toISOString() }).eq('id', id).select('id'));
+  if (error) fail(error, isMissingTable(error) ? WISH_NOT_READY : `直せませんでした: ${error.message}`);
+  if (!data || data.length === 0) throw new Error('自分が作った行きたい店だけ直せます');
+}
+
+export async function deleteWish(id) {
+  ensureOnline();
+  const { data, error } = await limited(client.from('wishlist').delete().eq('id', id).select('id'));
+  if (error) fail(error, isMissingTable(error) ? WISH_NOT_READY : `消せませんでした: ${error.message}`);
+  if (!data || data.length === 0) throw new Error('自分が作った行きたい店だけ消せます');
 }

@@ -283,3 +283,47 @@ export async function saveStationMemo({ note, gourmet, tvAdd, tvDelete }) {
   for (const t of tvAdd) await backend.addTv({ ...t, stationId: note.stationId });
   changed();
 }
+
+// ===== 行きたい店 =====
+// 家で落ち着いて入れる前提で、保存・直す・消すは電波がある時だけ(未送信には入れない)。一覧は最後に読んだ控えを圏外でも出す
+const WISHES_KEY = 'wishesCache';
+const needOnline = (verb) => {
+  if (backend.isFakeOffline() || !navigator.onLine) throw new backend.NetworkError(`電波がある時に${verb}`);
+};
+const wrapNet = async (verb, fn) => {
+  needOnline(verb);
+  try { return await fn(); } catch (e) {
+    if (e instanceof backend.NetworkError) throw new backend.NetworkError(`電波がある時に${verb}`);
+    throw e;
+  }
+};
+
+export async function loadWishes() {
+  try {
+    const list = await backend.listWishes();
+    try { localStorage.setItem(WISHES_KEY, JSON.stringify(list)); } catch { /* 控えられなくても続ける */ }
+    return list.map((w) => ({ ...w, mine: w.ownerId === me()?.id }));
+  } catch (e) {
+    if (!(e instanceof backend.NetworkError)) throw e;
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(WISHES_KEY)) || []; } catch { list = []; }
+    return list.map((w) => ({ ...w, mine: w.ownerId === me()?.id }));
+  }
+}
+
+export async function addWish(w) {
+  const id = crypto.randomUUID();
+  await wrapNet('保存できます', () => backend.addWish({ ...w, id }));
+  changed();
+  return id;
+}
+
+export async function updateWish(id, w) {
+  await wrapNet('直せます', () => backend.updateWish(id, w));
+  changed();
+}
+
+export async function deleteWish(id) {
+  await wrapNet('消せます', () => backend.deleteWish(id));
+  changed();
+}

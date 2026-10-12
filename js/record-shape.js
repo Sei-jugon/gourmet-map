@@ -45,3 +45,18 @@ export const tvRowToObj = (r) => ({
 export const visitRowToObj = (r) => ({
   id: r.id, stationId: r.station_id, visitedOn: r.visited_on ?? null, memo: r.memo ?? '',
 });
+
+// ===== 行きたい店(proposal-31 の表と同じ形の行 → 画面用) =====
+export const wishRowToObj = (r) => ({
+  id: r.id, ownerId: r.owner_id, name: r.name, provisional: !!r.provisional, genre: r.genre ?? null,
+  memo: r.memo ?? '', recommenders: r.recommenders || [],
+  sourceUrl: r.source_url ?? null, address: r.address ?? '', lat: r.lat ?? null, lng: r.lng ?? null,
+  positionSource: r.position_source ?? null, private: !!r.private, visitedOn: r.visited_on ?? null,
+  createdAt: r.created_at, updatedAt: r.updated_at,
+});
+export const wishObjToRow = (w) => ({
+  name: w.name.trim(), provisional: !!w.provisional, genre: w.genre || null,
+  memo: w.memo || '', recommenders: w.recommenders || [],
+  source_url: w.sourceUrl || null, address: w.address || '', lat: w.lat ?? null, lng: w.lng ?? null,
+  position_source: w.lat != null ? w.positionSource : null, private: !!w.private, visited_on: w.visitedOn || null,
+});

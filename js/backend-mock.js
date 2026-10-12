@@ -9,6 +9,8 @@ import * as db from './db.js';
 import { SAMPLE_PINS } from './sample-data.js';
 import { rowToRecord, noteRowToObj, gourmetRowToObj, tvRowToObj, visitRowToObj } from './record-shape.js';
 import { checkGourmetList, checkLocalPick, checkTv, checkVisit } from './station-notes.js';
+import { wishRowToObj, wishObjToRow } from './record-shape.js';
+import { checkWish } from './wish-check.js';
 
 export class NetworkError extends Error {}
 
@@ -267,4 +269,43 @@ export async function removeManualVisit(stationId) {
   for (const x of (await db.getAll('mock_station_visits')).filter((x) => x.user_id === ME.id && x.station_id === stationId)) {
     await db.del('mock_station_visits', x.id);
   }
+}
+
+// ===== 行きたい店(見本)。本物の決まりと同じ: 家族は見られる(自分だけのメモは作った本人だけ)、直す・消すは作った本人だけ =====
+const canSeeWish = (row) => row.owner_id === ME.id || !row.private;
+
+export async function listWishes() {
+  ensureOnline();
+  return (await db.getAll('mock_wishlist')).filter(canSeeWish).map(wishRowToObj)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
+export async function addWish(w) {
+  ensureOnline();
+  const err = checkWish(w);
+  if (err) throw new Error(err);
+  if (await db.get('mock_wishlist', w.id)) return; // 送り直し
+  const now = new Date().toISOString();
+  await db.put('mock_wishlist', { id: w.id, owner_id: ME.id, ...wishObjToRow(w), created_at: now, updated_at: now });
+}
+
+async function ownWish(id) {
+  const row = await db.get('mock_wishlist', id);
+  if (!row || row.owner_id !== ME.id) throw new Error('自分が作った行きたい店だけ直せます');
+  return row;
+}
+
+export async function updateWish(id, w) {
+  ensureOnline();
+  const err = checkWish(w);
+  if (err) throw new Error(err);
+  const row = await ownWish(id);
+  await db.put('mock_wishlist', { ...row, ...wishObjToRow(w), updated_at: new Date().toISOString() });
+}
+
+export async function deleteWish(id) {
+  ensureOnline();
+  const row = await db.get('mock_wishlist', id);
+  if (!row || row.owner_id !== ME.id) throw new Error('自分が作った行きたい店だけ消せます');
+  await db.del('mock_wishlist', id);
 }

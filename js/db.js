@@ -1,7 +1,7 @@
 // スマホの中の保存場所(IndexedDB)。圏外の時の「未送信」と、最後に見た地図の控えを置く。
 
 const DB_NAME = 'touring-gourmet';
-const DB_VERSION = 2; // 2: 見本の保存先に駅のメモ・手で付ける「行った」を追加
+const DB_VERSION = 3; // 2: 見本の保存先に駅のメモ・手で付ける「行った」 / 3: 行きたい店
 
 let dbPromise;
 
@@ -22,6 +22,7 @@ function openDb() {
         make('mock_station_gourmet', { keyPath: 'id' });
         make('mock_station_tv', { keyPath: 'id' });
         make('mock_station_visits', { keyPath: 'id' });
+        make('mock_wishlist', { keyPath: 'id' });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
