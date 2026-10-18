@@ -6,6 +6,10 @@
 //  (d) プラスコード(完全な形「8Q6QWQH5+FW9」/短い形「WQH5+FW9 京都市、京都府」)
 //  (e) Googleマップ以外のリンク(食べログなど) … 「元のリンク」として残す。位置は取れない
 //  (f) どれにも当てはまらない文字 … 固まらず、やさしく案内する(入力した文字は消さない)
+//  (g) iPhone の標準「マップ」の共有リンク(maps.apple.com/place?name=…&coordinate=緯度,経度&address=…)
+//      … 店名と位置をそのまま使い、住所は裏で控える。ll= / q= / sll= の形、name や coordinate が無い形、
+//         place-id だけの形(場所が分からない)でも止まらない
+//  住所は「日本、」「〒123-4567」や余計なコンマ・空白を外して控える(ピンを立てる場所を探す道具。画面には出さない)
 // どんな文字が来ても例外を出さず、分かった所だけを返す。
 import { isFull, isShort, decode } from './olc.js';
 
@@ -15,7 +19,9 @@ const PREFS = ['北海道', '青森県', '岩手県', '宮城県', '秋田県', 
 const PREF_RE = new RegExp(`(${PREFS.join('|')})`);
 const OLC = '23456789CFGHJMPQRVWX';
 const PLUS_RE = new RegExp(`(^|[^0-9A-Za-z])([${OLC}${OLC.toLowerCase()}]{4,8}\\+[${OLC}${OLC.toLowerCase()}]{2,3})(?=$|[^0-9A-Za-z])`);
-const URL_RE = /https?:\/\/[^\s<>"'「」()（）]+/gi;
+// リンクは英数字と記号だけで切り出す(前後に日本語の文がくっついていても、リンクだけを取り出す)
+const URL_RE = /https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]+/gi;
+const APPLE_RE = /^https?:\/\/(maps\.apple\.com|maps\.apple)\//i;
 const SHORT_LINK_RE = /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)\//i;
 const GOOGLE_MAPS_RE = /^https?:\/\/((www\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+|maps\.app\.goo\.gl|goo\.gl\/maps)/i;
 // 共有文に混ざりがちな、店名でも住所でもない行
@@ -45,8 +51,32 @@ export function positionFromUrl(url) {
   return { position: pos, name: name || null };
 }
 
+// iPhone の「マップ」のリンクを読む。分からない所は null
+export function readAppleLink(url) {
+  const out = { name: null, position: null, address: null };
+  let u;
+  try { u = new URL(url); } catch { return out; }
+  const get = (k) => {
+    const v = u.searchParams.get(k);
+    return v && v.trim() ? v.trim() : null;
+  };
+  const pair = (v) => {
+    const m = v && v.match(/^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+    return m && inRange(Number(m[1]), Number(m[2])) ? { lat: Number(m[1]), lng: Number(m[2]) } : null;
+  };
+  out.position = pair(get('coordinate')) || pair(get('ll')) || pair(get('q')) || pair(get('sll'));
+  const q = get('q');
+  const address = get('address') || (q && !pair(q) && looksLikeAddress(q) ? q : null);
+  if (address) out.address = cleanAddress(address).slice(0, 120) || null;
+  const name = get('name') || (q && !pair(q) && !looksLikeAddress(q) ? q : null);
+  if (name) out.name = cleanName(name).slice(0, 60) || null;
+  return out;
+}
+
+// 住所らしい行か。「京都市伏見区桃山町」のように番地がなくても、市・郡のあとに区・町・村が続けば住所とみる
 function looksLikeAddress(line) {
-  return PREF_RE.test(line) || /〒?\s*\d{3}-?\d{4}/.test(line) || /[市区町村郡].*\d/.test(line) || /\d+丁目|\d+番地?|\d+-\d+/.test(line);
+  return PREF_RE.test(line) || /〒?\s*\d{3}-?\d{4}/.test(line) || /[市区町村郡].*\d/.test(line) || /\d+丁目|\d+番地?|\d+-\d+/.test(line)
+    || /[^\s]+[市郡][^\s]*[区町村]/.test(line);
 }
 
 // 店名らしい行か(ふつうの文章・記号だけの行は店名にしない)
@@ -59,8 +89,14 @@ function looksLikeName(line) {
   return /[ぁ-んァ-ヶ一-龠A-Za-zＡ-Ｚａ-ｚ]/.test(t);
 }
 
+// 住所を整える: 「日本、」「〒612-8212」を外し、「京都府京都市伏見区, 西柳町545-2」のコンマと空白をつめる
 function cleanAddress(s) {
-  return s.replace(/〒?\s*\d{3}-?\d{4}\s*/, '').replace(/^[\s,、，・·]+|[\s,、，・·]+$/g, '').trim();
+  return s.replace(/^\s*日本\s*[、,，]?\s*/, '')
+    .replace(/〒?\s*\d{3}-?\d{4}\s*/, '')
+    .replace(/\s*[,，、]\s*/g, '')
+    .replace(/^[\s・·]+|[\s・·]+$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 function cleanName(s) {
@@ -68,7 +104,8 @@ function cleanName(s) {
 }
 
 export function parsePaste(raw) {
-  const out = { kind: 'empty', sourceUrl: null, isGoogleLink: false, name: null, address: null, position: null, positionSource: null, plusCode: null, message: '' };
+  // positionLabel: 画面の「場所:」の出し方(apple = Appleマップのリンクから。保存する時の決め方は url と同じ)
+  const out = { kind: 'empty', sourceUrl: null, isGoogleLink: false, name: null, address: null, position: null, positionSource: null, positionLabel: null, plusCode: null, message: '' };
   if (typeof raw !== 'string') return out;
   // 見えない文字・特殊な空白をそろえる
   const text = raw.replace(/[\u200B-\u200D\uFEFF\u2028\u2029]/g, '').replace(/\r\n?/g, '\n').replace(/[\u00A0\u3000]/g, ' ').trim();
@@ -77,15 +114,30 @@ export function parsePaste(raw) {
     return out;
   }
 
-  const urls = text.match(URL_RE) || [];
-  // 元のリンク: Googleマップのリンクがあればそれ、なければ最初のリンク(食べログなど)
+  // リンクの終わりにくっついた句読点は外す
+  const urls = (text.match(URL_RE) || []).map((u) => u.replace(/[.,;:!?]+$/, '')).filter((u) => u.length > 10);
+  // 元のリンク: Googleマップのリンク、Appleマップのリンク、なければ最初のリンク(食べログなど)
   const googleUrl = urls.find((u) => GOOGLE_MAPS_RE.test(u)) || null;
-  out.sourceUrl = googleUrl || urls[0] || null;
+  const appleUrl = urls.find((u) => APPLE_RE.test(u)) || null;
+  out.sourceUrl = googleUrl || appleUrl || urls[0] || null;
   out.isGoogleLink = !!googleUrl;
   let rest = text.replace(URL_RE, ' ');
 
+  // (g) iPhone の「マップ」のリンク
+  let apple = null;
+  if (appleUrl) {
+    apple = readAppleLink(appleUrl);
+    if (apple.position) {
+      out.position = apple.position;
+      out.positionSource = 'url';
+      out.positionLabel = 'apple';
+    }
+    if (apple.name) out.name = apple.name;
+    if (apple.address) out.address = apple.address;
+  }
+
   // (c) 長いアドレスの位置
-  for (const u of urls) {
+  for (const u of urls.filter((x) => x !== appleUrl)) {
     const { position, name } = positionFromUrl(u);
     if (position && !out.position) {
       out.position = position;
@@ -129,14 +181,27 @@ export function parsePaste(raw) {
   }
 
   // 種類と、やさしい案内
+  if (apple) {
+    if (out.position) {
+      out.kind = 'apple_link';
+      out.message = out.name ? `店名「${out.name}」と場所を読み取りました(Appleマップのリンクから)。` : 'Appleマップのリンクから場所を読み取りました。店名を入れてください。';
+    } else if (out.address) {
+      out.kind = 'apple_address_only';
+      out.message = '住所を読み取りました。「この住所で場所を探す」を押すと、場所の候補を出せます。';
+    } else {
+      out.kind = 'apple_no_place';
+      out.message = 'リンクだけでは場所が分からないので、店名を入れて、ピンを合わせてください。';
+    }
+    return out;
+  }
   const onlyShortLink = urls.length > 0 && urls.every((u) => SHORT_LINK_RE.test(u)) && !lines.length && !out.plusCode;
   const otherLinkOnly = urls.length > 0 && !googleUrl && !out.name && !out.address && !out.position && !out.plusCode;
   if (onlyShortLink) {
     out.kind = 'short_link';
-    out.message = 'リンクだけでは店が分からないので、店名を入れてください。場所は「この店名で探す」か地図で決めてください。';
+    out.message = 'リンクだけでは店が分からないので、店名を入れてください。場所は「この店名で探す」か、ピンを合わせて決めてください。';
   } else if (otherLinkOnly) {
     out.kind = 'other_link';
-    out.message = 'リンクを「元のリンク」に入れました。場所は分からないので、店名を入れて「この店名で探す」か、地図で選んでください。';
+    out.message = 'リンクを控えました。場所は分からないので、店名を入れて「この店名で探す」か、ピンを合わせてください。';
   } else if (out.plusCode && !out.plusCode.full) {
     out.kind = out.plusCode.locality ? 'plus_short' : 'plus_short_no_area';
     out.message = out.plusCode.locality
@@ -148,9 +213,12 @@ export function parsePaste(raw) {
   } else if (out.position) {
     out.kind = 'long_url';
     out.message = out.name ? 'アドレスから場所と店名を読み取りました。' : 'アドレスから場所を読み取りました。店名を入れてください。';
+  } else if (out.address && !out.name) {
+    out.kind = 'address_only';
+    out.message = '住所を読み取りました。「この住所で場所を探す」を押すと、場所の候補を出せます。';
   } else if (out.name || out.address) {
     out.kind = out.address ? 'share_text' : 'name_only';
-    out.message = out.address ? '店名と住所を読み取りました。「この店名で探す」で場所の候補を出せます。' : '店名を読み取りました。「この店名で探す」で場所の候補を出せます。';
+    out.message = out.address ? '店名と住所を読み取りました。「この住所で場所を探す」で場所の候補を出せます。' : '店名を読み取りました。「この店名で探す」で場所の候補を出せます。';
   } else {
     out.kind = 'unknown';
     out.message = 'Googleマップのリンクか、店名を入れてくださいね。';

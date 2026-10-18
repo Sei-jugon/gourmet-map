@@ -953,6 +953,24 @@ $('password-form').addEventListener('submit', async (e) => {
 
 // ===== 起動 =====
 
+// Android の共有メニュー(manifest の share_target)から開かれた時: ?title=&text=&url= を受け取る。
+// ログインの前でも受け取って端末に一時的に控え(この画面を閉じれば消える)、アドレスからは外す。
+// 使うのはログインのあと(「行きたい追加」の貼り付け欄に入れるだけ。勝手に保存しない・リンクは開かない)
+const SHARE_KEY = 'pendingShare';
+const SHARE_MAX = 2000; // とても長い文字は切る
+(function takeShared() {
+  const keys = ['title', 'text', 'url'];
+  if (!keys.some((k) => params.has(k))) return;
+  const parts = keys.map((k) => (params.get(k) || '').trim()).filter(Boolean);
+  // 同じ物(文の中にリンクが入っていて、url にも同じリンクがある時など)は1回だけ
+  const uniq = parts.filter((p, i) => !parts.some((q, j) => j !== i && q.includes(p) && (q.length > p.length || j < i)));
+  const joined = uniq.join('\n').slice(0, SHARE_MAX);
+  try { if (joined) sessionStorage.setItem(SHARE_KEY, joined); } catch { /* 控えられなくても動く */ }
+  const u = new URL(location.href);
+  for (const k of keys) u.searchParams.delete(k);
+  history.replaceState(history.state, '', `${u.pathname}${u.search}${u.hash}`);
+})();
+
 setupUpdates().catch(() => { /* 使えなくても通常表示は続ける */ });
 
 me = await store.init();
@@ -967,3 +985,9 @@ window.wishUI = initWishUI({ map, store, showToast, startRecordFromWish, todayIn
 await loadStationInfo();
 await render();
 store.sync();
+// 共有で受け取った文字があれば、「行きたい追加」を開いて貼り付け欄に入れる(使ったら消す)
+{
+  let shared = null;
+  try { shared = sessionStorage.getItem(SHARE_KEY); sessionStorage.removeItem(SHARE_KEY); } catch { /* 控えがなければ何もしない */ }
+  if (shared) window.wishUI.openWithShared(shared);
+}

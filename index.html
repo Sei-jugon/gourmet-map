@@ -199,18 +199,30 @@
     </form>
   </div>
 
-  <!-- 行きたい店を追加・直す(1画面で上から順に。タブや別の画面には分けない) -->
+  <!-- 行きたい店を追加・直す(1画面で上から順に。タブや別の画面には分けない)。
+       残すのは店名とピンの位置だけ。住所・元のリンクは、貼り付けや検索で分かった時に裏で控える(画面には出さない) -->
   <section id="wish-sheet" class="sheet tall" hidden aria-label="行きたい店">
     <div class="picker-head">
       <h2 id="wish-sheet-title" class="sheet-title">行きたい店を追加</h2>
       <button id="wish-cancel" class="btn sub picker-close" type="button">やめる</button>
     </div>
 
+    <div id="wish-quick" class="wish-quick">
+      <h3 class="wish-step-title">すぐメモ(店名だけ)</h3>
+      <div class="wish-search-row">
+        <input id="wish-quick-name" type="text" maxlength="60" placeholder="店名だけ。場所はあとで">
+        <button id="wish-quick-save" class="btn main" type="button">メモする</button>
+      </div>
+      <p id="wish-quick-error" class="login-error" role="alert"></p>
+    </div>
+
     <div id="wish-paste-area" class="wish-step">
-      <h3 class="wish-step-title">① リンクや文章を貼る(なくてもOK)</h3>
-      <p class="wish-hint">リンクが無くても、店名だけで始められます</p>
-      <textarea id="wish-paste" rows="2" placeholder="例: https://maps.app.goo.gl/… や WQH5+FW9 京都市、京都府"></textarea>
+      <h3 class="wish-step-title">① 貼る(なくてもOK)</h3>
+      <p class="wish-lead">iPhoneは、標準のマップアプリで店を開き、共有→コピーして、ここに貼ると、店名と場所が決まります</p>
+      <textarea id="wish-paste" rows="2" placeholder="ここに貼る"></textarea>
       <button id="wish-read" class="btn sub wide" type="button">読み取る</button>
+      <p class="wish-hint wish-gmaps-row">Googleマップを使う人は、住所かプラスコードをコピーして貼ると、場所が決まります。
+        <a id="wish-gmaps-find" class="wish-gmaps-find" href="https://www.google.com/maps/" target="_blank" rel="noopener">Googleマップで探す</a></p>
     </div>
     <p id="wish-paste-msg" class="wish-msg" role="status"></p>
 
@@ -222,19 +234,18 @@
     </div>
 
     <div class="wish-step">
-      <h3 class="wish-step-title">③ 場所</h3>
-      <button id="wish-search" class="btn main wide" type="button">この店名で探す</button>
+      <h3 class="wish-step-title">③ 場所(ピンを店の場所に合わせる)</h3>
+      <p id="wish-place-status" class="wish-place-status none"></p>
+      <p id="wish-place-done" class="wish-place-done" role="status" hidden>場所が決まりました</p>
+      <div id="wish-minimap" class="wish-minimap" aria-label="店の場所を決める地図"></div>
+      <p class="wish-hint">ピンを動かすか、地図を押すと、そこが店の場所になります(長押し・右クリックでも置けます)。スマホは2本の指で地図を動かせます</p>
+      <button id="wish-address-search" class="btn main wide" type="button" hidden>この住所で場所を探す</button>
+      <button id="wish-search" class="btn sub wide" type="button">この店名で探す</button>
       <p id="wish-search-msg" class="wish-msg" role="status"></p>
+      <p id="wish-search-reason" class="wish-reason"></p>
       <ul id="wish-candidates" class="wish-candidates"></ul>
       <button id="wish-wider" class="btn sub wide" type="button" hidden>もっと遠くも探す</button>
       <p id="wish-search-attrib" class="wish-attrib"></p>
-      <p id="wish-place-status" class="wish-place-status none"></p>
-      <div id="wish-minimap" class="wish-minimap" aria-label="場所を確かめる地図"></div>
-      <p class="wish-hint">ピンを指で動かすか、地図を長押しして置けます。地図は2本の指で動かせます</p>
-      <button id="wish-center-btn" class="btn sub wide" type="button">この地図の真ん中に置く</button>
-      <label class="field">住所(分かれば)
-        <input id="wish-address" type="text" maxlength="120">
-      </label>
     </div>
 
     <div class="wish-step">
@@ -248,9 +259,6 @@
       </div>
       <label class="field">メモ
         <textarea id="wish-memo" rows="2" maxlength="200" placeholder="例: テレビで見た。昼だけ営業"></textarea>
-      </label>
-      <label class="field">元のリンク(Googleマップ・食べログなど)
-        <input id="wish-url" type="url" maxlength="500" placeholder="https://…">
       </label>
       <label class="switch-row"><input id="wish-private" type="checkbox"> 自分だけのメモ(家族には見せない)</label>
     </div>

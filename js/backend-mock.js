@@ -31,10 +31,13 @@ function ensureOnline() {
   if (fakeOffline || !navigator.onLine) throw new NetworkError('電波がありません');
 }
 
-// 見本ではログイン画面を出さず、アドレスで選んだ人として始める
-export const needsLogin = false;
-export async function init() { return { ...ME }; }
-export async function signIn() { return { ...ME }; }
+// 見本ではログイン画面を出さず、アドレスで選んだ人として始める。
+// 試験用: ?mocklogin=1 の時だけ、最初にログイン画面を出す(どんな文字でもログインできる。本物には問い合わせない)
+const MOCK_LOGIN = new URLSearchParams(location.search).get('mocklogin') === '1';
+let mockLoggedIn = !MOCK_LOGIN;
+export const needsLogin = MOCK_LOGIN;
+export async function init() { return mockLoggedIn ? { ...ME } : null; }
+export async function signIn() { mockLoggedIn = true; return { ...ME }; }
 export async function signOut() {}
 
 export function me() {

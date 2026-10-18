@@ -12,12 +12,40 @@
 //    「うまく探せませんでした。時間をおくか、地図でピンを置いてください」を出す(SearchFailed)
 //  - 住所の検索で国土地理院が失敗したら、Nominatim に切り替える(1秒に1回の決まりは守る)
 //  - 429(多すぎ)か403(断られた)を受けたサービスは、10分間は呼ばない(止められる前に引く)
+//  - 失敗の案内には、短い理由を添える(時間切れ・つながりません・断られました 403・混んでいます 429・
+//    お休み中 あと○分・検索を止めています・設定が読めません など。どの失敗でも同じ文にならないように)
 
 const PREF_RE = /(北海道|東京都|京都府|大阪府|.{2,3}県)/;
 
 export const FAIL_MESSAGE = 'うまく探せませんでした。時間をおくか、地図でピンを置いてください';
+const restMinutes = (until, nowMs) => Math.max(1, Math.ceil((until - nowMs) / 60000));
+// 失敗の理由(code)→ 画面に小さく出す短い文
+function reasonText(f, nowMs) {
+  switch (f.code) {
+    case 'timeout': return '時間切れ';
+    case 'network': return 'つながりません';
+    case 'blocked': return `断られました ${f.status}`;
+    case 'busy': return `混んでいます ${f.status}`;
+    case 'http': return `うまく返事がありません ${f.status}`;
+    case 'badjson': return '答えが読めません';
+    case 'resting': return `お休み中、あと${restMinutes(f.until, nowMs)}分`;
+    case 'disabled': return '検索を止めています';
+    case 'config': return '設定が読めません';
+    default: return 'わかりません';
+  }
+}
 export class SearchFailed extends Error {
-  constructor() { super(FAIL_MESSAGE); this.name = 'SearchFailed'; }
+  // fail: { code, status?, until? }
+  constructor(fail = { code: 'unknown' }, nowMs = Date.now()) {
+    const main = fail.code === 'resting'
+      ? `あと${restMinutes(fail.until, nowMs)}分お休み中です。地図でピンを置けます`
+      : FAIL_MESSAGE;
+    super(main);
+    this.name = 'SearchFailed';
+    this.code = fail.code;
+    this.status = fail.status ?? null;
+    this.reason = reasonText(fail, nowMs); // 例: 「断られました 403」
+  }
 }
 const DEFAULT_TIMEOUT_MS = 10000;
 const DEFAULT_REST_MS = 10 * 60 * 1000;
@@ -29,7 +57,8 @@ async function loadConfig() {
       const res = await fetch('data/services.json', { cache: 'no-cache' });
       config = res.ok ? await res.json() : null;
     } catch { config = null; }
-    config = config || { gsi: { enabled: false }, nominatim: { enabled: false } };
+    // 読めなかった時は、どちらも使わない(理由は「設定が読めません」)
+    config = config || { unreadable: true, gsi: { enabled: false }, nominatim: { enabled: false } };
   }
   return config;
 }
@@ -60,10 +89,21 @@ function saveRest() {
 }
 export function restingUntil(name) { return restUntil[name] > now() ? restUntil[name] : 0; }
 
-// 1つのサービスに問い合わせる。うまくいかなければ null(理由は投げない。呼ぶ側が切り替え・案内を決める)
+// 1つのサービスに問い合わせない理由(設定が読めない・止めている・お休み中)。なければ null
+function skipReason(name, cfg) {
+  if (cfg.unreadable) return { code: 'config' };
+  if (!cfg[name]?.enabled) return { code: 'disabled' };
+  const until = restingUntil(name);
+  if (until) return { code: 'resting', until };
+  return null;
+}
+
+// 1つのサービスに問い合わせる。答えは { data }、うまくいかなければ { fail: { code, status? } }
+// (理由は投げない。呼ぶ側が切り替え・案内を決める)
 async function ask(name, url, cfg) {
   const svc = cfg[name];
-  if (!svc?.enabled || restingUntil(name)) return null;
+  const skip = skipReason(name, cfg);
+  if (skip) return { fail: skip };
   stats[name]++;
   const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = setTimeout(() => ctrl?.abort(), svc.timeout_ms ?? DEFAULT_TIMEOUT_MS);
@@ -75,13 +115,16 @@ async function ask(name, url, cfg) {
     if (res.status === 429 || res.status === 403) {
       restUntil[name] = now() + (svc.rest_on_block_ms ?? DEFAULT_REST_MS);
       saveRest();
-      return null;
+      return { fail: { code: res.status === 429 ? 'busy' : 'blocked', status: res.status } };
     }
-    if (!res.ok) return null;
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return null; // 時間切れ・つながらない・答えが読めない
+    if (!res.ok) return { fail: { code: 'http', status: res.status } };
+    let data;
+    try { data = await res.json(); } catch { return { fail: { code: 'badjson' } }; }
+    return { data: Array.isArray(data) ? data : [] };
+  } catch (e) {
+    // 時間切れ(打ち切った)か、つながらない
+    const timedOut = e?.name === 'AbortError' || e?.message === 'timeout';
+    return { fail: { code: timedOut ? 'timeout' : 'network' } };
   } finally {
     clearTimeout(timer);
   }
@@ -91,8 +134,12 @@ const cache = new Map();
 let lastNominatimAt = 0;
 let nominatimChain = Promise.resolve();
 
+// 住所らしいか。「京都市伏見区桃山町」のように番地がなくても、市・郡のあとに区・町・村が続けば住所とみる
 export function looksLikeAddress(q) {
-  return PREF_RE.test(q) || /[市区町村郡]/.test(q) && /\d|丁目|番地?/.test(q) || /^〒?\s*\d{3}-?\d{4}/.test(q);
+  return PREF_RE.test(q)
+    || /[市区町村郡]/.test(q) && /\d|丁目|番地?/.test(q)
+    || /[^\s]+[市郡][^\s]*[区町村]/.test(q)
+    || /^〒?\s*\d{3}-?\d{4}/.test(q);
 }
 
 export const MAX_CANDIDATES = 5;
@@ -110,40 +157,42 @@ function rank(results, near) {
   return withDist.slice(0, MAX_CANDIDATES);
 }
 
-// 答えは配列、うまくいかなければ null
+// 答えは { results }、うまくいかなければ { fail }
 async function gsiSearch(q, cfg) {
-  const data = await ask('gsi', `${cfg.gsi?.url}?q=${encodeURIComponent(q)}`, cfg);
-  if (!data) return null;
-  return data.slice(0, 5).map((f) => ({
+  const { data, fail } = await ask('gsi', `${cfg.gsi?.url}?q=${encodeURIComponent(q)}`, cfg);
+  if (fail) return { fail };
+  return { results: data.slice(0, 5).map((f) => ({
     label: f.properties?.title || q,
     lat: Number(f.geometry?.coordinates?.[1]),
     lng: Number(f.geometry?.coordinates?.[0]),
     source: 'gsi',
-  })).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+  })).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng)) };
 }
 
 // Nominatim は順番待ちの列に並べて、前の問い合わせから min_interval_ms あける
 function nominatimSearch(q, cfg, area) {
-  if (!cfg.nominatim?.enabled || restingUntil('nominatim')) return Promise.resolve(null);
+  const skip = skipReason('nominatim', cfg);
+  if (skip) return Promise.resolve({ fail: skip });
   const run = async () => {
-    if (restingUntil('nominatim')) return null; // 待っている間に休みに入った
+    const skipNow = skipReason('nominatim', cfg); // 待っている間に休みに入った
+    if (skipNow) return { fail: skipNow };
     const gap = (cfg.nominatim.min_interval_ms ?? 1000) - (Date.now() - lastNominatimAt);
     if (gap > 0) await new Promise((r) => setTimeout(r, gap));
     lastNominatimAt = Date.now();
     // area があれば、その範囲の中だけを探す(viewbox=西,北,東,南 と bounded=1)
     const box = area ? `&viewbox=${area.w},${area.n},${area.e},${area.s}&bounded=1` : '';
     const url = `${cfg.nominatim.url}?format=jsonv2&countrycodes=jp&accept-language=ja&limit=10${box}&q=${encodeURIComponent(q)}`;
-    const data = await ask('nominatim', url, cfg);
+    const { data, fail } = await ask('nominatim', url, cfg);
     lastNominatimAt = Date.now(); // 答えが来た時からも1秒あける
-    if (!data) return null;
-    return data.map((r) => ({
+    if (fail) return { fail };
+    return { results: data.map((r) => ({
       label: r.display_name || r.name || q,
       lat: Number(r.lat),
       lng: Number(r.lon),
       source: 'osm',
-    })).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+    })).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng)) };
   };
-  const p = nominatimChain.then(run, run).catch(() => null);
+  const p = nominatimChain.then(run, run).catch(() => ({ fail: { code: 'unknown' } }));
   nominatimChain = p;
   return p;
 }
@@ -167,27 +216,31 @@ export async function searchPlaces(query, { prefer = 'auto', near = null, wide =
   let results = [];
   const inArea = (r) => !area || (r.lat >= area.s && r.lat <= area.n && r.lng >= area.w && r.lng <= area.e);
   let answered = false; // どこか1つでも、ちゃんと答えた(0件でも)か
+  const fails = [];
+  const take = (r, filter = (x) => x) => {
+    if (r.fail) { fails.push(r.fail); return; }
+    answered = true;
+    results = filter(r.results);
+  };
   if (addressFirst) {
     // 住所・地域名は場所が1つに決まるので、範囲で絞らない(近い順には並べる)
     // 国土地理院が失敗・0件なら Nominatim に切り替える
-    const g = await gsiSearch(q, cfg);
-    if (g) { answered = true; results = g; }
-    if (!results.length) {
-      const n = await nominatimSearch(q, cfg, prefer === 'area' ? null : area);
-      if (n) { answered = true; results = n; }
-    }
+    take(await gsiSearch(q, cfg));
+    if (!results.length) take(await nominatimSearch(q, cfg, prefer === 'area' ? null : area));
   } else {
-    const n = await nominatimSearch(q, cfg, area);
-    if (n) { answered = true; results = n; }
-    if (!results.length && PREF_RE.test(q)) {
-      const g = await gsiSearch(q, cfg);
-      if (g) { answered = true; results = g.filter(inArea); }
-    }
+    take(await nominatimSearch(q, cfg, area));
+    if (!results.length && PREF_RE.test(q)) take(await gsiSearch(q, cfg), (g) => g.filter(inArea));
   }
-  // どこからも答えがない(エラー・時間切れ・つながらない・休み中・止めている)時は、やさしく案内する。覚えない
-  if (!answered) throw new SearchFailed();
+  // どこからも答えがない(エラー・時間切れ・つながらない・休み中・止めている)時は、理由を添えてやさしく案内する。覚えない
+  if (!answered) throw new SearchFailed(pickFail(fails), now());
   cache.set(key, results);
   return rank(results, near);
+}
+
+// いくつか失敗した時に、案内に出す理由を1つ選ぶ。実際に問い合わせて失敗した理由を先に、次にお休み中・設定・止めている
+function pickFail(fails) {
+  const order = ['blocked', 'busy', 'timeout', 'network', 'http', 'badjson', 'unknown', 'resting', 'config', 'disabled'];
+  return [...fails].sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code))[0] || { code: 'unknown' };
 }
 
 export const ATTRIBUTION = { gsi: '国土地理院', osm: '© OpenStreetMap contributors' };
