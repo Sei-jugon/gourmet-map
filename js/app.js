@@ -7,6 +7,7 @@ import { openStationPicker } from './station-picker.js';
 import { openStationEditor } from './station-editor.js';
 import { todayInJapan } from './station-notes.js';
 import { createBananaLayer } from './banana-layer.js';
+import { createTvLayer } from './tv-layer.js';
 import { initWishUI } from './wish-ui.js';
 
 const JAPAN_CENTER = [36.2, 138.25];
@@ -30,6 +31,40 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 // 知らせないと、地図が覚えている大きさと実際がずれ、真ん中の位置が下にずれる
 new ResizeObserver(() => map.invalidateSize({ pan: false })).observe(map.getContainer());
 
+// 吹き出し(小さな画面)が画面に収まるようにする: 中身の高さの上限を、地図の高さ-下のボタンの高さ から決める(中身は指で上下にスクロールできる)。
+// 位置を合わせる自動の動きも、下のボタンに隠れないよう余白を取る。
+function fitPopups() {
+  // 下のボタンなど、地図の下に重なって見える物の高さ(見えている物の一番上から地図の下端まで)
+  const mapBottom = map.getContainer().getBoundingClientRect().bottom;
+  let covered = 0;
+  const bar = $('bottom-bar');
+  if (bar && !bar.hidden) {
+    for (const c of bar.children) {
+      const r = c.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) covered = Math.max(covered, mapBottom - r.top);
+    }
+  }
+  // 上に重なる「道の駅 訪問」の表示の高さ
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const counter = $('michi-counter');
+  let coveredTop = 16;
+  if (counter && !counter.hidden) coveredTop = Math.max(coveredTop, counter.getBoundingClientRect().bottom - mapRect.top + 8);
+  const mapH = map.getSize().y;
+  document.documentElement.style.setProperty('--popup-max', `${Math.max(110, mapH - coveredTop - covered - 12 - 48)}px`);
+  L.Popup.mergeOptions({ autoPanPaddingTopLeft: L.point(64, coveredTop), autoPanPaddingBottomRight: L.point(84, covered + 12) });
+}
+new ResizeObserver(fitPopups).observe(map.getContainer());
+fitPopups();
+// 小さな画面の中の指の操作は地図に伝えない(中身のスクロールが地図の移動・長押しに横取りされないように)
+const POPUP_STOP_EVENTS = 'pointerdown pointermove pointerup pointercancel touchstart touchmove touchend touchcancel mousedown wheel';
+map.on('popupopen', (e) => {
+  const c = e.popup.getElement();
+  if (!c || c._isolated) return;
+  c._isolated = true;
+  L.DomEvent.on(c, POPUP_STOP_EVENTS, L.DomEvent.stopPropagation);
+  fitPopups();
+});
+
 const pinLayer = L.layerGroup().addTo(map);
 
 // 道の駅のマーク(試験から状態を見られるよう window に置く)
@@ -41,6 +76,12 @@ window.michiLayer = createMichiLayer(map, {
 window.appMap = map;
 // 「せっかくグルメ」登場店(🍌)の候補
 window.bananaLayer = createBananaLayer(map, { chip: $('banana-chip') });
+// テレビ番組の候補店(🍚孤独のグルメ・💥オモウマい店。せっかくグルメは🍌のボタンと同じ切り替え)
+window.tvLayer = createTvLayer(map, {
+  chips: { kd: $('tv-kd-chip'), om: $('tv-om-chip') },
+  bananaChip: $('banana-chip'),
+  onAdd: (shop) => window.wishUI.addFromCandidate(shop),
+});
 
 // 地図の隅の出典が下のボタンに隠れないよう、出典の高さの分だけボタンを上げる
 const attributionEl = map.attributionControl.getContainer();
@@ -432,7 +473,7 @@ function drawPins(openId = null) {
     if (group.length === 1) {
       const pin = group[0];
       const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin) })
-        .bindPopup(() => buildPopup(pin), { maxWidth: 264, autoPanPaddingTopLeft: L.point(64, 16) })
+        .bindPopup(() => buildPopup(pin), { maxWidth: 264 })
         .on('popupclose', (e) => releasePhoto(e.popup.getElement()))
         .addTo(pinLayer);
       markersById.set(pin.id, marker);

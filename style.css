@@ -286,7 +286,10 @@ button:disabled { opacity: 0.5; }
   bottom: 0;
   z-index: 1050;
   max-height: 85vh;
+  max-height: 85dvh; /* iPhone Safariは上下のバーが出ていると vh が実際より大きいので dvh を優先 */
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 16px;
   padding-bottom: calc(16px + env(safe-area-inset-bottom));
   border-radius: 16px 16px 0 0;
@@ -450,7 +453,9 @@ button:disabled { opacity: 0.5; }
   width: 100%;
   max-width: 400px;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px;
   border-radius: 16px;
   background: #fff;
@@ -596,7 +601,7 @@ button:disabled { opacity: 0.5; }
 .michi-counter[hidden] { display: none; }
 
 /* ===== 道の駅を選ぶ・駅のメモを書く(下から出る、背の高い画面) ===== */
-.sheet.tall { max-height: 92vh; z-index: 1110; }
+.sheet.tall { max-height: 92vh; max-height: 92dvh; z-index: 1110; }
 
 .picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .picker-head .sheet-title { margin: 0; }
@@ -689,7 +694,7 @@ button:disabled { opacity: 0.5; }
 .modal .note { margin: 0 0 12px; color: var(--sub); font-size: 0.9rem; }
 
 /* 駅のメモが多い時、吹き出しが画面の下のボタンにかからないよう、中でスクロールする */
-.leaflet-popup-content .michi-popup { max-height: 52vh; overflow-y: auto; overscroll-behavior: contain; }
+.leaflet-popup-content .michi-popup { max-height: 52vh; max-height: 52dvh; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
 .note-sec .note-title { margin-bottom: 0; }
 
 .michi-popup .michi-verify { margin: 4px 0 0; font-size: 0.8rem; color: var(--warn); }
@@ -957,3 +962,119 @@ button:disabled { opacity: 0.5; }
 .wish-quickedit .rec-chips { margin-top: 4px; }
 .wish-quickedit .wish-q-error:empty { display: none; }
 .wish-quickedit .wish-q-save { margin-top: 8px; }
+
+/* ===== テレビ番組の候補店(🍌せっかくグルメ・🍚孤独のグルメ・💥オモウマい店) ===== */
+/* ひし形。🍌の公式候補(黄色い丸)・行きたい店(しおり型)・道の駅(四角)と形で見分ける。
+   うすい+破線=未確認(全部)、点線の縁=位置がおおよそ */
+.tv-mark {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  margin: 7px;            /* 押せる範囲は44px */
+  border: 3px dashed var(--tv-edge, #6b7280);
+  border-radius: 6px;
+  background: var(--tv-bg, #e5e7eb);
+  color: var(--tv-ink, #111827);
+  transform: rotate(45deg);
+  opacity: 0.85;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+}
+.tv-mark > span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-45deg);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+}
+.tv-mark.approx { border-style: dotted; opacity: 0.65; }
+.tv-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 2px;
+  border: 3px dashed var(--tv-edge, #6b7280);
+  border-radius: 8px;
+  background: var(--tv-bg, #e5e7eb);
+  color: var(--tv-ink, #111827);
+  font-size: 13px;
+  font-weight: 900;
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+}
+.tv-cluster > span { transform: rotate(-45deg); }
+.chip.tv { background: transparent; font-size: 1.1rem; }
+.layer-stack .chip.tv.kd.on { background: #bbf7d0; border-color: #15803d; color: #14532d; }
+.layer-stack .chip.tv.om.on { background: #fecaca; border-color: #b91c1c; color: #7f1d1d; }
+.tv-popup .tv-name { margin: 0; font-size: 1.05rem; font-weight: bold; }
+.tv-popup .tv-meta { margin: 4px 0 0; font-size: 0.9rem; }
+.tv-popup .tv-status { margin: 6px 0 0; font-size: 0.9rem; font-weight: bold; color: var(--warn); }
+.tv-popup .tv-note { margin: 4px 0 0; font-size: 0.9rem; font-weight: bold; color: #b45309; }
+.tv-popup .tv-approx { margin: 4px 0 0; font-size: 0.85rem; font-weight: bold; color: var(--warn); }
+.tv-popup .tv-caution { margin: 4px 0 0; font-size: 0.85rem; color: #92400e; }
+.tv-popup .tv-hint { margin: 4px 0 0; font-size: 0.8rem; color: var(--sub); }
+.tv-popup .tv-source { display: inline-block; margin-top: 6px; font-size: 0.9rem; color: var(--main); }
+.tv-popup .tv-add { margin-top: 8px; }
+.tv-popup .tv-add-msg { margin: 4px 0 0; font-size: 0.9rem; font-weight: bold; color: var(--main); }
+.tv-popup .tv-add-msg.error { color: var(--warn); }
+/* 番組から入れた行きたい店: しおりの右肩に番組の小さなバッジ */
+.wish-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.tv-popup .wish-gmap-links a { line-height: 1.3; padding: 9px 10px; min-height: 40px; box-sizing: border-box; }
+
+/* ===== 吹き出し(小さな画面): 画面に収め、中身を指で上下にスクロールできる ===== */
+/* 高さの上限 --popup-max は app.js(fitPopups)が、地図の高さ-下のボタンの高さ から決める */
+.leaflet-popup-content {
+  max-height: var(--popup-max, 60vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+/* 上に固定の「閉じる」「削除」(右上の×と重ならないよう右を空ける) */
+.popup-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 0 40px 6px 0;
+  background: #fff;
+}
+.popup-top-btn {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--sub);
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+.popup-top-btn.danger { border-color: var(--error); color: var(--error); }

@@ -151,7 +151,7 @@ export function createBananaLayer(map, { chip }) {
       if (g.length === 1) {
         const s = g[0];
         const m = L.marker([s.lat, s.lng], { icon: icon(s), pane: 'banana', keyboard: false })
-          .bindPopup(() => buildBananaPopup(s), { maxWidth: 260, autoPanPaddingTopLeft: L.point(64, 16) })
+          .bindPopup(() => buildBananaPopup(s), { maxWidth: 260 })
           .addTo(layer);
         singles.set(s.id, m);
       } else {

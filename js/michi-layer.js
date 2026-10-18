@@ -124,7 +124,7 @@ export function createMichiLayer(map, { chip, counter, buildExtra = null }) {
   function makeLayers(s, mode, isVisited) {
     const pane = isVisited ? 'michiTop' : 'michi';
     const popup = () => buildPopup(s);
-    const popupOptions = { maxWidth: 260, autoPanPaddingTopLeft: L.point(64, 16) };
+    const popupOptions = { maxWidth: 260 };
     if (mode === 'badge') {
       const icon = L.divIcon({
         className: '',

@@ -9,6 +9,8 @@ import { searchPlaces, ATTRIBUTION } from './geocode.js';
 import { recoverNearest, decode } from './olc.js';
 import { checkWish, GENRES, provisionalName, UNNAMED_NAME, isUnnamed } from './wish-check.js';
 import { distanceM } from './michi-layer.js';
+import { PROGRAMS, candidateToWish } from './tv-programs.js';
+import { symbolOf } from './tv-layer.js';
 
 const STORAGE_KEY = 'wishLayer';
 const FIXED_RECOMMENDERS = ['長男', '次男', '番組'];
@@ -113,10 +115,13 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
   // ===== 地図の印 =====
   function icon(w) {
     const unnamed = isUnnamed(w);
+    // 番組から入れた店(おすすめした人に番組名がある)は、しおりの右肩に番組の小さなバッジ
+    const prog = PROGRAMS.find((p) => (w.recommenders || []).includes(p.label));
+    const badge = prog ? `<i class="wish-badge ${prog.key}" data-program="${prog.key}">${symbolOf(prog)}</i>` : '';
     const cls = ['wish-mark', w.visitedOn ? 'visited' : '', w.private ? 'private' : '', unnamed ? 'unnamed' : ''].filter(Boolean).join(' ');
     return L.divIcon({
       className: '',
-      html: `<div class="${cls}" data-id="${w.id}"><span>${w.visitedOn ? '✓' : unnamed ? '?' : '行'}</span></div>`,
+      html: `<div class="${cls}" data-id="${w.id}"><span>${w.visitedOn ? '✓' : unnamed ? '?' : '行'}</span></div>${badge}`,
       iconSize: [40, 46],
       iconAnchor: [20, 44], // しおりの切れ込みの下が場所
       popupAnchor: [0, -40],
@@ -204,6 +209,19 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
   function popup(w) {
     const box = el('div', 'wish-popup');
     box.dataset.id = w.id;
+    // 上に固定の「閉じる」「削除」(中身が長くて下までスクロールしなくても押せる。削除は確認つきのまま)
+    const askDelete = async () => {
+      if (!confirm(`「${w.name}」を行きたい店から消します。もとに戻せません。消しますか?`)) return;
+      try {
+        await store.deleteWish(w.id);
+        map.closePopup();
+        showToast('行きたい店から消しました');
+      } catch (e) { showToast(e.message, 5000); }
+    };
+    const top = el('div', 'popup-topbar');
+    top.append(btn('popup-top-btn wish-close-top', '閉じる', () => map.closePopup()));
+    if (w.mine) top.append(btn('popup-top-btn danger wish-delete-top', '削除', askDelete));
+    box.append(top);
     box.append(nameLine(w, 'wish-name', '行きたい: '));
     if (isUnnamed(w) && w.mine) box.append(quickEditor(w));
     if (w.provisional) box.append(el('p', 'wish-sub warn', '仮の名前です。店名が分かったら「直す」で入れてください'));
@@ -227,14 +245,7 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
           showToast('ピンを指でドラッグして、位置を合わせてください', 4500);
         }));
       }
-      box.append(btn('delete-link wish-delete', 'この行きたい店を消す', async () => {
-        if (!confirm(`「${w.name}」を行きたい店から消します。もとに戻せません。消しますか?`)) return;
-        try {
-          await store.deleteWish(w.id);
-          map.closePopup();
-          showToast('行きたい店から消しました');
-        } catch (e) { showToast(e.message, 5000); }
-      }));
+      box.append(btn('delete-link wish-delete', 'この行きたい店を消す', askDelete));
     }
     return box;
   }
@@ -248,7 +259,7 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     for (const w of wishes) {
       if (!hasPlace(w)) continue;
       const m = L.marker([w.lat, w.lng], { icon: icon(w), pane: 'wish', keyboard: false, draggable: false })
-        .bindPopup(() => popup(w), { maxWidth: 260, autoPanPaddingTopLeft: L.point(64, 16) })
+        .bindPopup(() => popup(w), { maxWidth: 260 })
         .addTo(layer);
       // 「ピンの位置を微調整」を押した時だけ動かせる。動かし終えたら新しい位置を保存する
       m.on('dragend', async () => {
@@ -740,6 +751,31 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     renderRecs();
   });
 
+  // ===== テレビ番組の候補店 → 行きたい店 =====
+  // 同じ店(店名が同じ、または100m以内で名前が似ている)がすでにあれば、入れずに知らせる。結果 { ok, message } を返す
+  function wishDuplicate(w) {
+    const n = normName(w.name);
+    return wishes.find((x) => !isUnnamed(x) && (
+      (n && !x.provisional && normName(x.name) === n)
+      || (w.lat != null && x.lat != null && distanceM(w.lat, w.lng, x.lat, x.lng) <= DUPLICATE_M
+        && (x.provisional || normName(x.name).includes(n) || n.includes(normName(x.name))))
+    ));
+  }
+  async function addFromCandidate(shop) {
+    const w = candidateToWish(shop);
+    const err = checkWish(w);
+    if (err) return { ok: false, message: `入れられませんでした(${err})` };
+    if (wishDuplicate(w)) return { ok: false, duplicate: true, message: 'すでに登録されています' };
+    try {
+      await store.addWish(w);
+    } catch (e) {
+      return { ok: false, message: `保存できませんでした(${failReason(e)})` };
+    }
+    if (!enabled) { enabled = true; writeEnabled(true); draw(); }
+    showToast(`「${w.name}」を行きたいに入れました`);
+    return { ok: true, message: '行きたいに入れました' };
+  }
+
   // ===== 保存 =====
   function duplicateOf(w) {
     if (isUnnamed(w)) return undefined;
@@ -874,7 +910,7 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
 
   draw();
   return {
-    refresh, markVisited, openSheet, openWithShared,
+    refresh, markVisited, openSheet, openWithShared, addFromCandidate,
     wishes: () => wishes, isEnabled: () => enabled, markerIds: () => [...markers.keys()],
     miniMap: () => mini, miniMarkerLatLng: () => miniMarker?.getLatLng() ?? null, miniTouchMode: () => touchMode,
     editState: () => (edit ? { address: edit.address, sourceUrl: edit.sourceUrl, lat: edit.lat, lng: edit.lng, positionSource: edit.positionSource, placeLabel: edit.placeLabel } : null),

@@ -69,3 +69,11 @@
 | `sourceUrl` | 根拠のアドレス |
 | `status` / `statusReasons` | 確認の状態と、未確認の理由 |
 | `approxPosition` / `positionNote` | 位置がおおよそか、位置の出どころ |
+
+## tv-shops.json(テレビ番組の候補店。2026-10-19)
+- 材料: `data-src/tv-candidates.csv`(110店。せっかくグルメ・孤独のグルメ・オモウマい店。放送回や紹介サイトからの候補で、施主は全件を確認していない。すべて「候補(未確認)」)
+- 位置は `data-src/build_tv.py` で**1回だけ**調べて保存した結果(アプリは起動のたびに検索しない)。市区町村の中心=国土地理院の住所検索、店名での一致=OpenStreetMap(Nominatim。1秒に1回、同じ問い合わせはキャッシュ)。出典: 国土地理院・© OpenStreetMap contributors
+- `accuracy`(位置の確かさ): `name`=店名で一致した位置 / `city`=市区町村の中心あたり(重ならないよう中心のまわりに少しずらした、おおよその位置) / `pref`=都道府県の中心 / `none`=見つからない(地図には出ず、店名で探すリンクだけ)
+- `duplicateOf`: 🍌の既存の店(banana-shops.json)と同じ店の時、その番号。既存を優先して、地図には二重に出さない
+- 項目: `id, program(番組), airedOn(放送日), name(店名), pref, city, genre, sourceUrl(出典URL), confidence(自信), note(注意), status(状態), lat, lng, accuracy, duplicateOf`
+- 番組の設定(マーク・色・固定の一行・最初のオンオフ)は `js/tv-programs.js`。番組を足す時はそこに1つ足す
