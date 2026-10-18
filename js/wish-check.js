@@ -6,6 +6,10 @@ export const POSITION_SOURCES = ['plus_code', 'url', 'search', 'map'];
 export const GENRES = ['ラーメン', '和食', '中華', '洋食', 'カフェ', 'スイーツ', 'パン', 'その他'];
 // 店名が空でジャンルを選んだ時の仮の名前(例: 「ラーメン(仮)」)
 export const provisionalName = (genre) => `${genre}(仮)`;
+// 長押しで置いたピンの仮の名前。表(wishlist)は変えず、今ある列と制約の範囲(店名1〜60字)で収める。
+// 仮の名前(provisional)はジャンルが要る決まりなので、これは provisional ではなく「この名前そのもの」で見分ける
+export const UNNAMED_NAME = '(名前未定)';
+export const isUnnamed = (w) => !!w && w.name === UNNAMED_NAME && !w.provisional;
 const len = (s) => [...(s || '')].length;
 
 export function checkWish(w) {

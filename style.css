@@ -915,3 +915,45 @@ button:disabled { opacity: 0.5; }
 .wish-gmap-links.small a { min-height: 34px; line-height: 30px; font-size: 0.8rem; padding: 0 8px; }
 .wish-item .wish-decide { margin-top: 6px; min-height: 40px; padding: 0 12px; font-size: 0.85rem; }
 .wish-quick .login-error:empty { display: none; }
+
+/* ===== 長押しでピン・名前未定のピン ===== */
+/* 主地図の上では、iPhone(Safari)の拡大鏡・メニュー・文字選択を出さない(ほかの画面の文字選択は今までどおり)。吹き出しの中の文字は選べる */
+#map, #map * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#map .leaflet-popup-content, #map .leaflet-popup-content * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+#map .leaflet-popup-content { -webkit-touch-callout: default; }
+/* 店名が未定のピン: うすい色と「?」 */
+.wish-mark.unnamed { background: #f9a8d4; color: #9d174d; }
+.wish-mark.unnamed.private { background: repeating-linear-gradient(45deg, #f9a8d4, #f9a8d4 5px, #fce7f3 5px, #fce7f3 10px); }
+.picker-mark.wish.unnamed { border-style: dashed; background: #fdf2f8; }
+.wish-unnamed-filter {
+  display: block; width: 100%; min-height: 48px; margin: 8px 0 0; padding: 0 12px;
+  border: 2px dashed var(--wish); border-radius: 12px; background: #fdf2f8; color: var(--wish);
+  font-size: 1rem; font-weight: bold; text-align: left;
+}
+.wish-unnamed-filter.active { background: var(--wish); color: #fff; border-style: solid; }
+/* 「ピンを置きました(取り消し)」「保存できませんでした」: 下の帯の上に出す */
+.pin-toast {
+  position: fixed; left: 12px; right: 12px; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 1150;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px 10px 16px; border-radius: 12px; background: rgba(31, 41, 55, 0.95); color: #fff; font-size: 1rem;
+}
+.pin-toast[hidden] { display: none; }
+.pin-toast.error { background: #991b1b; }
+.pin-toast-undo {
+  flex: 0 0 auto; min-height: 48px; min-width: 96px; padding: 0 16px; border: 2px solid #fff; border-radius: 10px;
+  background: transparent; color: #fff; font-size: 1rem; font-weight: bold;
+}
+.pin-toast-undo[hidden] { display: none; }
+/* 名前未定のピンの小さな画面 */
+.wish-quickedit { margin-top: 6px; }
+.wish-quickedit .wish-input { display: block; width: 100%; min-height: 44px; margin-top: 6px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 10px; font-size: 16px; box-sizing: border-box; }
+.wish-quickedit .rec-chips { margin-top: 4px; }
+.wish-quickedit .wish-q-error:empty { display: none; }
+.wish-quickedit .wish-q-save { margin-top: 8px; }

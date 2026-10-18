@@ -65,6 +65,12 @@ function ensureOnline() {
 // 失敗を「電波がない」か「断られた」かに分けて投げる
 function fail(error, deniedMessage) {
   if (isNetworkFailure(error)) throw new NetworkError('電波がありません');
+  // ログインが切れている(通行証の期限切れ・ログインしていない)
+  if (error?.status === 401 || error?.code === 'PGRST301' || error?.code === 'PGRST303' || /JWT|not authenticated|session.*(missing|expired)/i.test(error?.message || '')) {
+    const e = new Error('ログインが切れています。ログインし直してください');
+    e.cause = error;
+    throw e;
+  }
   const e = new Error(deniedMessage || error?.message || '保存先でエラーが起きました');
   e.cause = error;
   throw e;

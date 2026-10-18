@@ -7,13 +7,19 @@
 import { parsePaste } from './wish-parse.js';
 import { searchPlaces, ATTRIBUTION } from './geocode.js';
 import { recoverNearest, decode } from './olc.js';
-import { checkWish, GENRES, provisionalName } from './wish-check.js';
+import { checkWish, GENRES, provisionalName, UNNAMED_NAME, isUnnamed } from './wish-check.js';
 import { distanceM } from './michi-layer.js';
 
 const STORAGE_KEY = 'wishLayer';
 const FIXED_RECOMMENDERS = ['長男', '次男', '番組'];
 const DUPLICATE_M = 100; // この距離以内で名前が似ていれば、二重登録かもしれないと知らせる
 const NO_PLACE = '__noplace'; // 一覧の「場所が未定」の絞り込み
+const NO_NAME = '__noname';   // 一覧の「名前未定のピン」の絞り込み(場所が未定の絞り込みとは別)
+// 長押しでピンを置く: 誤操作しにくいよう長めに(0.8秒)。途中で指が少しでも動いたら取り消す
+const LONG_PRESS_MS = 800;
+const LONG_PRESS_SLOP_PX = 4;
+const UNDO_MS = 6000;   // 「ピンを置きました(取り消し)」を出す長さ
+const FAIL_MS = 8000;   // 「保存できませんでした」を出す長さ
 // 道案内の乗り物: Googleマップの公式の説明には two-wheeler(バイク)があるが「対応している国にいる時だけ」とあり、
 // 日本が対応しているか確かめられなかったので、確実に使える driving(車)にする
 const TRAVEL_MODE = 'driving';
@@ -80,6 +86,15 @@ export function simplerName(q) {
   return rest.length && rest.length < words.length ? rest.join(' ') : null;
 }
 
+// 保存できなかった理由を、短い言葉にする(通信できない・ログインが切れている・そのほか)
+export function failReason(e) {
+  const m = (e && e.message) || '';
+  if (/電波/.test(m)) return '電波がありません。電波のある所でもう一度';
+  if (/ログイン/.test(m)) return 'ログインが切れています。ログインし直してください';
+  if (/準備待ち/.test(m)) return '保存先の準備待ちです';
+  return m.replace(/^行きたい店を保存できませんでした: /, '') || 'うまく保存できませんでした';
+}
+
 const fmtKm = (km) => (km < 1 ? `約${Math.max(0.1, Math.round(km * 10) / 10)}km` : `約${km < 10 ? Math.round(km * 10) / 10 : Math.round(km)}km`);
 
 export function initWishUI({ map, store, showToast, startRecordFromWish, todayInJapan }) {
@@ -97,10 +112,11 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
 
   // ===== 地図の印 =====
   function icon(w) {
-    const cls = ['wish-mark', w.visitedOn ? 'visited' : '', w.private ? 'private' : ''].filter(Boolean).join(' ');
+    const unnamed = isUnnamed(w);
+    const cls = ['wish-mark', w.visitedOn ? 'visited' : '', w.private ? 'private' : '', unnamed ? 'unnamed' : ''].filter(Boolean).join(' ');
     return L.divIcon({
       className: '',
-      html: `<div class="${cls}" data-id="${w.id}"><span>${w.visitedOn ? '✓' : '行'}</span></div>`,
+      html: `<div class="${cls}" data-id="${w.id}"><span>${w.visitedOn ? '✓' : unnamed ? '?' : '行'}</span></div>`,
       iconSize: [40, 46],
       iconAnchor: [20, 44], // しおりの切れ込みの下が場所
       popupAnchor: [0, -40],
@@ -126,10 +142,70 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     return box;
   }
 
+  // 名前未定のピンの小さな画面: 店名・ジャンル・おすすめした人・メモを、あとから入れる(入れなくても閉じられる)
+  function quickEditor(w) {
+    const st = { genre: w.genre || null, recs: new Set(w.recommenders || []) };
+    const form = el('div', 'wish-quickedit');
+    form.append(el('p', 'wish-sub', '店名などは、あとで入れられます。入れなくても閉じられます'));
+    const name = el('input', 'wish-input wish-q-name');
+    name.type = 'text';
+    name.maxLength = 60;
+    name.placeholder = '店名(あとでもOK)';
+    name.setAttribute('aria-label', '店名');
+    const genres = el('div', 'rec-chips wish-q-genres');
+    const recs = el('div', 'rec-chips wish-q-recs');
+    const memo = el('textarea', 'wish-input wish-q-memo');
+    memo.rows = 2;
+    memo.maxLength = 200;
+    memo.placeholder = 'メモ(あとでもOK)';
+    memo.setAttribute('aria-label', 'メモ');
+    memo.value = w.memo || '';
+    const err = el('p', 'login-error wish-q-error');
+    err.setAttribute('role', 'alert');
+    const renderQ = () => {
+      genres.replaceChildren(...GENRES.map((g) => {
+        const b = btn(`rec-chip genre${st.genre === g ? ' on' : ''}`, g, () => { st.genre = st.genre === g ? null : g; renderQ(); });
+        b.dataset.genre = g;
+        b.setAttribute('aria-pressed', String(st.genre === g));
+        return b;
+      }));
+      recs.replaceChildren(...[...new Set([...recommenderChoices(), ...st.recs])].map((r) => {
+        const b = btn(`rec-chip${st.recs.has(r) ? ' on' : ''}`, r, () => { if (st.recs.has(r)) st.recs.delete(r); else st.recs.add(r); renderQ(); });
+        b.setAttribute('aria-pressed', String(st.recs.has(r)));
+        return b;
+      }));
+    };
+    renderQ();
+    form.append(name, el('p', 'wish-sub', 'ジャンル'), genres, el('p', 'wish-sub', 'おすすめした人'), recs, memo, err);
+    const save = btn('btn main wide wish-q-save', '入れた内容を保存', async () => {
+      let nm = name.value.trim();
+      let provisional = false;
+      if (!nm && st.genre) { nm = provisionalName(st.genre); provisional = true; }
+      if (!nm) nm = UNNAMED_NAME;
+      const next = { ...w, name: nm, provisional, genre: st.genre, recommenders: [...st.recs], memo: memo.value.trim() };
+      const unchanged = nm === UNNAMED_NAME && !st.genre && !next.recommenders.length && !next.memo && !w.memo && !(w.recommenders || []).length;
+      if (unchanged) { map.closePopup(); return; } // 何も入れていなければ、そのまま閉じる
+      const e = checkWish(next);
+      if (e) { err.textContent = e; return; }
+      save.disabled = true;
+      try {
+        await store.updateWish(w.id, next);
+        map.closePopup();
+        showToast('保存しました');
+      } catch (ex) {
+        err.textContent = `保存できませんでした(${failReason(ex)})`;
+        save.disabled = false;
+      }
+    });
+    form.append(save);
+    return form;
+  }
+
   function popup(w) {
     const box = el('div', 'wish-popup');
     box.dataset.id = w.id;
     box.append(nameLine(w, 'wish-name', '行きたい: '));
+    if (isUnnamed(w) && w.mine) box.append(quickEditor(w));
     if (w.provisional) box.append(el('p', 'wish-sub warn', '仮の名前です。店名が分かったら「直す」で入れてください'));
     if (w.genre) box.append(el('p', 'wish-sub', `ジャンル: ${w.genre}`));
     if (w.recommenders.length) box.append(el('p', 'wish-recs', `おすすめ: ${w.recommenders.join('・')}`));
@@ -141,7 +217,16 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     box.append(gmapLinks(w));
     if (w.mine) {
       if (!w.visitedOn && hasPlace(w)) box.append(btn('btn main wide wish-go', '行った(記録する)', () => startRecordFromWish(w)));
-      box.append(btn('btn sub wide wish-edit', '直す', () => openSheet(w)));
+      if (!isUnnamed(w)) box.append(btn('btn sub wide wish-edit', '直す', () => openSheet(w)));
+      if (hasPlace(w)) {
+        box.append(btn('btn sub wide wish-nudge', 'ピンの位置を微調整(ドラッグ)', () => {
+          const m = markers.get(w.id);
+          if (!m) return;
+          map.closePopup();
+          m.dragging?.enable();
+          showToast('ピンを指でドラッグして、位置を合わせてください', 4500);
+        }));
+      }
       box.append(btn('delete-link wish-delete', 'この行きたい店を消す', async () => {
         if (!confirm(`「${w.name}」を行きたい店から消します。もとに戻せません。消しますか?`)) return;
         try {
@@ -162,9 +247,22 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     if (!enabled) return;
     for (const w of wishes) {
       if (!hasPlace(w)) continue;
-      const m = L.marker([w.lat, w.lng], { icon: icon(w), pane: 'wish', keyboard: false })
+      const m = L.marker([w.lat, w.lng], { icon: icon(w), pane: 'wish', keyboard: false, draggable: false })
         .bindPopup(() => popup(w), { maxWidth: 260, autoPanPaddingTopLeft: L.point(64, 16) })
         .addTo(layer);
+      // 「ピンの位置を微調整」を押した時だけ動かせる。動かし終えたら新しい位置を保存する
+      m.on('dragend', async () => {
+        m.dragging?.disable();
+        const ll = m.getLatLng();
+        const cur = wishes.find((x) => x.id === w.id) || w;
+        try {
+          await store.updateWish(w.id, { ...cur, lat: ll.lat, lng: ll.lng, positionSource: 'map' });
+          showToast('ピンの位置を直しました');
+        } catch (e) {
+          m.setLatLng([cur.lat, cur.lng]);
+          showToast(`位置を直せませんでした(${failReason(e)})`, 6000);
+        }
+      });
       markers.set(w.id, m);
     }
   }
@@ -178,6 +276,108 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     enabled = !enabled;
     writeEnabled(enabled);
     draw();
+  });
+
+  // ===== 長押しでピンを置く =====
+  // 何もない所を長押し(パソコンは右クリック)すると、そこに「行きたい」のピンを置いてすぐ保存する。店名・ジャンルは聞かない。
+  const pinToast = $('pin-toast');
+  let pinToastTimer = null;
+  let saving = false;
+
+  function hidePinToast() {
+    clearTimeout(pinToastTimer);
+    pinToast.hidden = true;
+  }
+  function showPinToast(text, { undo = null, error = false, ms = UNDO_MS } = {}) {
+    clearTimeout(pinToastTimer);
+    $('pin-toast-text').textContent = text;
+    $('pin-toast-undo').hidden = !undo;
+    $('pin-toast-undo').onclick = undo;
+    pinToast.classList.toggle('error', error);
+    pinToast.hidden = false;
+    pinToastTimer = setTimeout(hidePinToast, ms);
+  }
+
+  async function undoPin(id) {
+    $('pin-toast-undo').disabled = true;
+    try {
+      await store.deleteWish(id);
+      showPinToast('ピンを取り消しました', { ms: 3000 });
+    } catch (e) {
+      showPinToast(`取り消せませんでした(${failReason(e)})。ピンは残っています`, { error: true, ms: FAIL_MS });
+    } finally {
+      $('pin-toast-undo').disabled = false;
+    }
+  }
+
+  async function quickPin(lat, lng) {
+    if (saving) return;
+    saving = true;
+    if (!enabled) { enabled = true; writeEnabled(true); draw(); } // 「行きたい」が消えていたら出す(置いたピンが見えるように)
+    const w = {
+      name: UNNAMED_NAME, provisional: false, genre: null, address: '', memo: '', sourceUrl: null, recommenders: [],
+      lat, lng, positionSource: 'map', private: false, visitedOn: null,
+    };
+    // 保存している間だけ、うすいピンを出す(保存できなかった時は消す)
+    const ghost = L.marker([lat, lng], { icon: pinIcon(true), pane: 'wish', interactive: false, keyboard: false }).addTo(layer);
+    try { navigator.vibrate?.(30); } catch { /* 振動しない端末もある */ }
+    try {
+      const id = await store.addWish(w);
+      layer.removeLayer(ghost);
+      showPinToast('ピンを置きました', { undo: () => undoPin(id) });
+    } catch (e) {
+      layer.removeLayer(ghost);
+      showPinToast(`保存できませんでした(${failReason(e)})。ピンは置かれていません`, { error: true, ms: FAIL_MS });
+    } finally {
+      saving = false;
+    }
+  }
+
+  // 長押しできる状態か(ほかの画面や確認が開いていない・十字の位置合わせ中でない)
+  const pressIdle = () => !$('bottom-bar').hidden && $('crosshair').hidden && $('login-screen').hidden
+    && !document.querySelector('.modal:not([hidden]), .sheet:not([hidden]), .photo-viewer:not([hidden])');
+  // すでにあるピン・道の駅・🍌・まとめマーク・吹き出し・地図のボタンの上では置かない
+  const onSomething = (t) => !!(t && t.closest && t.closest('.leaflet-interactive, .leaflet-marker-icon, .leaflet-popup, .leaflet-control, .pin-cluster'));
+
+  const mapBox = map.getContainer();
+  let press = null;       // 長押しを数えている最中の指
+  let lastTouchAt = 0;
+  const cancelPress = () => {
+    if (press) clearTimeout(press.timer);
+    press = null;
+  };
+  mapBox.addEventListener('touchstart', (e) => {
+    lastTouchAt = Date.now();
+    cancelPress();
+    if (e.touches.length !== 1 || !pressIdle() || onSomething(e.target)) return; // 2本指は絶対に置かない
+    const t = e.touches[0];
+    press = {
+      x: t.clientX, y: t.clientY,
+      timer: setTimeout(() => {
+        const p = press;
+        press = null;
+        if (!p || !pressIdle()) return;
+        const r = mapBox.getBoundingClientRect();
+        const ll = map.containerPointToLatLng(L.point(p.x - r.left, p.y - r.top));
+        quickPin(ll.lat, ll.lng);
+      }, LONG_PRESS_MS),
+    };
+  }, { passive: true, capture: true });
+  mapBox.addEventListener('touchmove', (e) => {
+    if (!press) return;
+    const t = e.touches[0];
+    // 2本指になった・数ピクセルでも動いた(スクロールや拡大縮小)→ 取り消す
+    if (e.touches.length !== 1 || Math.hypot(t.clientX - press.x, t.clientY - press.y) > LONG_PRESS_SLOP_PX) cancelPress();
+  }, { passive: true, capture: true });
+  for (const ev of ['touchend', 'touchcancel']) mapBox.addEventListener(ev, cancelPress, { passive: true, capture: true });
+  map.on('movestart zoomstart', cancelPress);
+
+  // パソコンの右クリック。地図の上ではブラウザのメニューは出さない。指の長押しで出る contextmenu は、上のタイマーで扱うので無視する
+  mapBox.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (Date.now() - lastTouchAt < 1500 || !pressIdle() || onSomething(e.target)) return;
+    const ll = map.mouseEventToLatLng(e);
+    quickPin(ll.lat, ll.lng);
   });
 
   // ===== 追加・直す画面 =====
@@ -342,8 +542,8 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     $('wish-paste-msg').textContent = '';
     clearSearchMsg();
     // 仮の名前の時は、店名の欄を空にして入れやすくする(空のまま保存すれば仮の名前のまま)
-    $('wish-name').value = w && !w.provisional ? w.name : '';
-    $('wish-name').placeholder = w?.provisional ? `${w.name} のまま(店名が分かったら入れる)` : '例: 中国料理 揚子江';
+    $('wish-name').value = w && !w.provisional && !isUnnamed(w) ? w.name : '';
+    $('wish-name').placeholder = w?.provisional ? `${w.name} のまま(店名が分かったら入れる)` : '例: 中国料理 揚子江(あとでもOK)';
     updateGmapsFind();
     $('wish-candidates').replaceChildren();
     $('wish-wider').hidden = true;
@@ -542,8 +742,9 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
 
   // ===== 保存 =====
   function duplicateOf(w) {
+    if (isUnnamed(w)) return undefined;
     const n = normName(w.name);
-    return wishes.find((x) => x.id !== edit.id && (
+    return wishes.find((x) => x.id !== edit.id && !isUnnamed(x) && (
       (n && !w.provisional && normName(x.name) === n)
       || (w.lat != null && x.lat != null && distanceM(w.lat, w.lng, x.lat, x.lng) <= DUPLICATE_M
         && (w.provisional || x.provisional || normName(x.name).includes(n) || n.includes(normName(x.name))))
@@ -559,6 +760,8 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     } else if (!name && edit.genre) {
       name = provisionalName(edit.genre); // 例: 「ラーメン(仮)」
       provisional = true;
+    } else if (!name && edit.lat != null) {
+      name = UNNAMED_NAME; // 店名もジャンルもなくても、ピンがあれば保存できる(あとで入れる)
     }
     const w = {
       name,
@@ -574,7 +777,7 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     };
     const err = checkWish(w);
     if (err) {
-      $('wish-error').textContent = err === '店名を入れてください' ? '店名を入れるか、ジャンルを選んでください(ジャンルなら仮の名前で保存できます)' : err;
+      $('wish-error').textContent = err === '店名を入れてください' ? '店名を入れるか、ジャンルを選んでください(ジャンルなら仮の名前で保存できます。ピンを置けば、店名なしでも保存できます)' : err;
       return;
     }
     const dup = duplicateOf(w);
@@ -592,7 +795,7 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
       if (edit.id) await store.updateWish(edit.id, w);
       else await store.addWish(w);
       closeSheet();
-      showToast(w.lat == null ? '保存しました。場所は、あとで決められます' : provisional ? `「${name}」で保存しました。店名が分かったら「直す」で入れてください` : '行きたい店に保存しました');
+      showToast(w.lat == null ? '保存しました。場所は、あとで決められます' : provisional ? `「${name}」で保存しました。店名が分かったら「直す」で入れてください` : isUnnamed(w) ? '名前未定のピンとして保存しました。店名は、ピンを押してあとで入れられます' : '行きたい店に保存しました');
     } catch (e) {
       $('wish-error').textContent = e.message;
     } finally {
@@ -611,19 +814,23 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
     const people = [...new Set(wishes.flatMap((w) => w.recommenders))];
     const tabs = el('div', 'picker-tabs wrap');
     const noPlaceCount = wishes.filter((w) => !hasPlace(w)).length;
+    const noNameCount = wishes.filter(isUnnamed).length;
+    // 名前未定のピン N件(押すと名前未定だけに絞る。場所が未定の絞り込みとは別)
+    const unnamedBtn = btn(`wish-unnamed-filter${listFilter === NO_NAME ? ' active' : ''}`, `名前未定のピン ${noNameCount}件`, () => { listFilter = listFilter === NO_NAME ? null : NO_NAME; renderList(); });
+    unnamedBtn.setAttribute('aria-pressed', String(listFilter === NO_NAME));
     for (const p of [null, NO_PLACE, ...people]) {
       const text = p === null ? 'すべて' : p === NO_PLACE ? `場所が未定(${noPlaceCount})` : `${p}おすすめ`;
       const b = btn(`picker-tab${listFilter === p ? ' active' : ''}`, text, () => { listFilter = p; renderList(); });
       b.dataset.filter = p || '';
       tabs.append(b);
     }
-    const shown = wishes.filter((w) => listFilter === null || (listFilter === NO_PLACE ? !hasPlace(w) : w.recommenders.includes(listFilter)));
+    const shown = wishes.filter((w) => listFilter === null || (listFilter === NO_NAME ? isUnnamed(w) : listFilter === NO_PLACE ? !hasPlace(w) : w.recommenders.includes(listFilter)));
     const ul = el('ul', 'picker-list');
     for (const w of shown) {
       const li = el('li', 'picker-item wish-item');
       li.dataset.id = w.id;
       const body = el('span', 'picker-body');
-      const title = el('span', 'picker-name', `${w.visitedOn ? '✓ ' : ''}${w.private ? '🔒 ' : ''}${w.name}`);
+      const title = el('span', 'picker-name', `${w.visitedOn ? '✓ ' : ''}${w.private ? '🔒 ' : ''}${isUnnamed(w) ? '? ' : ''}${w.name}`);
       if (w.provisional) title.append(' ', el('span', 'wish-provisional', '仮'));
       if (!hasPlace(w)) title.append(' ', el('span', 'wish-noplace', '場所が未定'));
       body.append(title, el('span', 'picker-sub', [w.recommenders.length ? `おすすめ: ${w.recommenders.join('・')}` : '', w.memo].filter(Boolean).join(' / ')));
@@ -635,7 +842,7 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
           openSheet(w);
         }));
       }
-      li.append(el('span', `picker-mark wish${w.visitedOn ? ' visited' : ''}`, w.visitedOn ? '✓' : '行'), body);
+      li.append(el('span', `picker-mark wish${w.visitedOn ? ' visited' : ''}${isUnnamed(w) ? ' unnamed' : ''}`, w.visitedOn ? '✓' : isUnnamed(w) ? '?' : '行'), body);
       li.addEventListener('click', () => {
         if (!hasPlace(w)) {
           if (w.mine) { close(); openSheet(w); } else showToast('この店は場所がまだ決まっていません');
@@ -649,7 +856,7 @@ export function initWishUI({ map, store, showToast, startRecordFromWish, todayIn
       ul.append(li);
     }
     if (!shown.length) ul.append(el('li', 'picker-empty', wishes.length ? '当てはまる店はありません' : 'まだありません。「行きたい追加」から入れてください'));
-    sheet.replaceChildren(head, tabs, ul);
+    sheet.replaceChildren(head, unnamedBtn, tabs, ul);
   }
 
   $('wish-list-btn').addEventListener('click', () => {
